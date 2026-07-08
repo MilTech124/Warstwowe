@@ -1,0 +1,24 @@
+<svg viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Brama bez przetłoczeń">
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6a7075"/>
+      <stop offset="0.55" stop-color="#4c5258"/>
+      <stop offset="1" stop-color="#373c41"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="200" fill="#eef0f1"/>
+  <rect x="120" y="4" width="60" height="9" rx="2" fill="#b7bdc2"/>
+  <rect x="150" y="2" width="14" height="6" rx="1" fill="#9aa1a6"/>
+  <rect x="13" y="12" width="274" height="166" rx="4" fill="#cbd0d4"/>
+  <rect x="17" y="16" width="266" height="158" rx="2" fill="url(#face)"/>
+  <g>
+    <line x1="17" y1="55.5" x2="283" y2="55.5" stroke="#2a2e32" stroke-width="1.4"/>
+    <line x1="17" y1="56.7" x2="283" y2="56.7" stroke="#828990" stroke-width="0.7"/>
+    <line x1="17" y1="95" x2="283" y2="95" stroke="#2a2e32" stroke-width="1.4"/>
+    <line x1="17" y1="96.2" x2="283" y2="96.2" stroke="#828990" stroke-width="0.7"/>
+    <line x1="17" y1="134.5" x2="283" y2="134.5" stroke="#2a2e32" stroke-width="1.4"/>
+    <line x1="17" y1="135.7" x2="283" y2="135.7" stroke="#828990" stroke-width="0.7"/>
+  </g>
+  <rect x="146" y="150" width="20" height="5" rx="2" fill="#23282c"/>
+  <circle cx="271" cy="167" r="2.2" fill="#aeb4b9"/>
+</svg>

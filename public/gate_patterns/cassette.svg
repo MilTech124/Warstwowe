@@ -1,0 +1,61 @@
+<svg viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Brama z przetłoczeniami kasetonowymi">
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6a7075"/>
+      <stop offset="0.55" stop-color="#4c5258"/>
+      <stop offset="1" stop-color="#373c41"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="200" fill="#eef0f1"/>
+  <rect x="120" y="4" width="60" height="9" rx="2" fill="#b7bdc2"/>
+  <rect x="150" y="2" width="14" height="6" rx="1" fill="#9aa1a6"/>
+  <rect x="13" y="12" width="274" height="166" rx="4" fill="#cbd0d4"/>
+  <rect x="17" y="16" width="266" height="158" rx="2" fill="url(#face)"/>
+  <g fill="none">
+    <!-- rząd 1 -->
+    <g stroke="#23272b" stroke-width="1.3">
+      <rect x="23" y="19.5" width="82" height="31" rx="4"/>
+      <rect x="109" y="19.5" width="82" height="31" rx="4"/>
+      <rect x="195" y="19.5" width="82" height="31" rx="4"/>
+    </g>
+    <g stroke="#80878d" stroke-width="0.7" opacity="0.65">
+      <rect x="26" y="22.5" width="76" height="25" rx="3"/>
+      <rect x="112" y="22.5" width="76" height="25" rx="3"/>
+      <rect x="198" y="22.5" width="76" height="25" rx="3"/>
+    </g>
+    <!-- rząd 2 -->
+    <g stroke="#23272b" stroke-width="1.3">
+      <rect x="23" y="59.75" width="82" height="31" rx="4"/>
+      <rect x="109" y="59.75" width="82" height="31" rx="4"/>
+      <rect x="195" y="59.75" width="82" height="31" rx="4"/>
+    </g>
+    <g stroke="#80878d" stroke-width="0.7" opacity="0.65">
+      <rect x="26" y="62.75" width="76" height="25" rx="3"/>
+      <rect x="112" y="62.75" width="76" height="25" rx="3"/>
+      <rect x="198" y="62.75" width="76" height="25" rx="3"/>
+    </g>
+    <!-- rząd 3 -->
+    <g stroke="#23272b" stroke-width="1.3">
+      <rect x="23" y="100" width="82" height="31" rx="4"/>
+      <rect x="109" y="100" width="82" height="31" rx="4"/>
+      <rect x="195" y="100" width="82" height="31" rx="4"/>
+    </g>
+    <g stroke="#80878d" stroke-width="0.7" opacity="0.65">
+      <rect x="26" y="103" width="76" height="25" rx="3"/>
+      <rect x="112" y="103" width="76" height="25" rx="3"/>
+      <rect x="198" y="103" width="76" height="25" rx="3"/>
+    </g>
+    <!-- rząd 4 -->
+    <g stroke="#23272b" stroke-width="1.3">
+      <rect x="23" y="140.25" width="82" height="31" rx="4"/>
+      <rect x="109" y="140.25" width="82" height="31" rx="4"/>
+      <rect x="195" y="140.25" width="82" height="31" rx="4"/>
+    </g>
+    <g stroke="#80878d" stroke-width="0.7" opacity="0.65">
+      <rect x="26" y="143.25" width="76" height="25" rx="3"/>
+      <rect x="112" y="143.25" width="76" height="25" rx="3"/>
+      <rect x="198" y="143.25" width="76" height="25" rx="3"/>
+    </g>
+  </g>
+  <circle cx="271" cy="167" r="2.2" fill="#aeb4b9"/>
+</svg>
