@@ -384,6 +384,18 @@ select {
   line-height: 1.35;
 }
 
+.gutters-panel-compact {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(203, 213, 225, 0.9);
+}
+
+.gutters-hero-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .flashing-toggle-list {
   display: grid;
   gap: 8px;
@@ -514,6 +526,12 @@ select {
   transform: translateY(-1px);
 }
 
+.title-color-button:disabled {
+  cursor: default;
+  opacity: 0.82;
+  transform: none;
+}
+
 .title-color-button strong {
   max-width: 92px;
   overflow: hidden;
@@ -581,6 +599,22 @@ select {
 
 .cladding-option-list.gate-pattern-list {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.cladding-option-list.compact.tilting-model-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tilting-model-list .cladding-option {
+  min-height: 64px;
+}
+
+.tilting-model-list .cladding-option-copy strong,
+.tilting-model-list .cladding-option-copy small {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.25;
 }
 
 .cladding-option.gate-pattern-option {
@@ -1026,6 +1060,310 @@ select {
   gap: 12px;
 }
 
+.openings-manager,
+.opening-workspace,
+.opening-product-flow {
+  display: grid;
+  gap: 12px;
+}
+
+.opening-add-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.opening-add-grid button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(15, 118, 110, 0.3);
+  border-radius: 8px;
+  background: #f0fdfa;
+  color: #0f766e;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.opening-add-grid button:hover {
+  border-color: rgba(15, 118, 110, 0.58);
+  background: #ccfbf1;
+  transform: translateY(-1px);
+}
+
+.opening-selector {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 1px 1px 5px;
+}
+
+.opening-selector > button {
+  display: grid;
+  flex: 0 0 auto;
+  min-width: 94px;
+  gap: 2px;
+  border: 1px solid #d6dee7;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  cursor: pointer;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.opening-selector > button.active {
+  border-color: rgba(15, 118, 110, 0.5);
+  background: #0f766e;
+  color: white;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.18);
+}
+
+.opening-selector span {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.opening-selector small {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.opening-selector > button.active small {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.opening-empty {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  border: 1px dashed #b9c5d2;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+  padding: 22px 16px;
+  text-align: center;
+}
+
+.opening-empty strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.opening-empty span {
+  max-width: 280px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.opening-workspace {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 12px;
+}
+
+.opening-workspace-head,
+.opening-product-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.opening-workspace-head > div:first-child,
+.opening-product-title > div:first-child {
+  min-width: 0;
+}
+
+.opening-workspace-head span,
+.opening-product-title span,
+.opening-direction > span {
+  display: block;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.opening-workspace-head strong,
+.opening-product-title strong {
+  display: block;
+  margin-top: 2px;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.opening-product-title small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.opening-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.opening-actions button {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d5dee8;
+  border-radius: 7px;
+  background: white;
+  color: #475569;
+  cursor: pointer;
+}
+
+.opening-actions button:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.opening-actions button.danger {
+  color: #b91c1c;
+}
+
+.opening-product-flow {
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fff, #f8fafc);
+  padding: 12px;
+}
+
+.opening-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.opening-model-grid > button {
+  display: grid;
+  min-height: 108px;
+  align-content: start;
+  gap: 5px;
+  border: 1px solid #d6dee7;
+  border-radius: 8px;
+  background: white;
+  color: #334155;
+  cursor: pointer;
+  padding: 10px;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.opening-model-grid > button:hover,
+.opening-model-grid > button.active {
+  border-color: rgba(15, 118, 110, 0.48);
+  background: #f0fdfa;
+  transform: translateY(-1px);
+}
+
+.opening-model-grid strong {
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.opening-model-grid small {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.opening-model-grid span {
+  align-self: end;
+  width: max-content;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 9px;
+  font-weight: 900;
+  padding: 3px 6px;
+}
+
+.opening-direction {
+  display: grid;
+  gap: 7px;
+}
+
+.opening-direction .segmented button {
+  min-height: 36px;
+  border: 1px solid #d6dee7;
+  border-radius: 7px;
+  background: white;
+  color: #475569;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.opening-direction .segmented button.active {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: white;
+}
+
+.opening-direction .segmented.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.opening-operation-note {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.opening-glass-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #dbe3eb;
+  border-radius: 8px;
+  background: white;
+  padding: 9px;
+}
+
+.opening-glass-preview > span {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(71, 85, 105, 0.22);
+  border-radius: 7px;
+  box-shadow: inset 8px 8px 14px rgba(255, 255, 255, 0.45), inset -8px -8px 14px rgba(15, 23, 42, 0.08);
+}
+
+.opening-glass-preview strong,
+.opening-glass-preview small {
+  display: block;
+}
+
+.opening-glass-preview strong {
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.opening-glass-preview small {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .opening-editor {
   display: grid;
   gap: 12px;
@@ -1124,7 +1462,7 @@ select {
 
 .viewer-toolbar {
   position: absolute;
-  top: 16px;
+  top: 72px;
   right: 16px;
   z-index: 5;
   display: flex;
@@ -1193,16 +1531,31 @@ select {
 
 .dimension-label-3d {
   min-width: max-content;
-  border: 1px solid rgba(5, 150, 105, 0.45);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
-  color: #0f172a;
-  font-size: 12px;
+  border: 1px solid rgba(5, 150, 105, 0.55);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+  color: #064e3b;
+  font-size: 13px;
   font-weight: 900;
   line-height: 1;
-  padding: 7px 9px;
+  padding: 4px 6px;
   white-space: nowrap;
+}
+
+.dimension-tag {
+  min-width: max-content;
+  border: 1px solid rgba(5, 150, 105, 0.65);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.22);
+  color: #064e3b;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 4px 6px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 @media (max-width: 1180px) {
@@ -1249,6 +1602,10 @@ select {
     transform: none;
     overflow-x: auto;
     justify-content: flex-start;
+  }
+
+  .viewer-toolbar {
+    top: 12px;
   }
 
   .color-modal-backdrop {

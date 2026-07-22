@@ -5,34 +5,54 @@ import {
   ArrowUpRight,
   Check,
   ChevronRight,
+  Copy,
+  DoorOpen,
+  Droplets,
+  Grid2X2Plus,
   Layers3,
   PanelTop,
+  Plus,
   Ruler,
   SlidersHorizontal,
+  Trash2,
 } from "lucide-react";
 import {
   CLADDING_CATALOG,
+  DOOR_MODELS,
   FLASHING_COLORS,
   FLASHING_PACKAGES,
   GATE_MANUFACTURERS,
   GATE_PATTERNS,
+  GATE_STRUCTURES,
+  GUTTER_COLORS,
+  OPENING_FRAME_COLORS,
   OPENING_WALLS,
   PRESETS,
   ROOF_CLADDING_CATALOG,
   ROOF_TYPES,
-  TILTING_LAYOUTS,
+  WINDOW_GLASS_TYPES,
+  WINDOW_MODELS,
   WALL_PANEL_LENGTH_STANDARDS,
   getCladdingColor,
   getCladdingManufacturer,
   getCladdingModel,
   getCladdingType,
+  getDoorColor,
+  getDoorModel,
   getGateColor,
+  getGateAvailableColors,
   getGateManufacturer,
   getGateModel,
   getGateType,
   getRoofCladdingColor,
   getRoofCladdingManufacturer,
   getRoofCladdingModel,
+  getWindowFrameColor,
+  getWindowGlass,
+  getWindowDefaultSize,
+  getWindowModel,
+  getWindowOrientation,
+  getWindowSizeRanges,
   getWallPanelLengthM,
 } from "@/config/catalog";
 import { useConfiguratorStore } from "@/store/configuratorStore";
@@ -51,7 +71,7 @@ const tabs = [
   { id: "roof", label: "Dach", icon: ArrowUpRight },
   { id: "cladding", label: "Plyty", icon: Layers3 },
   { id: "flashings", label: "Obrobki", icon: SlidersHorizontal },
-  { id: "openings", label: "Brama", icon: PanelTop },
+  { id: "openings", label: "Otwory", icon: DoorOpen },
 ];
 
 export function ControlPanel() {
@@ -63,7 +83,11 @@ export function ControlPanel() {
   const updateOverhang = useConfiguratorStore((state) => state.updateOverhang);
   const updateCladding = useConfiguratorStore((state) => state.updateCladding);
   const updateFlashings = useConfiguratorStore((state) => state.updateFlashings);
+  const updateGutters = useConfiguratorStore((state) => state.updateGutters);
   const updateOpening = useConfiguratorStore((state) => state.updateOpening);
+  const addOpening = useConfiguratorStore((state) => state.addOpening);
+  const duplicateOpening = useConfiguratorStore((state) => state.duplicateOpening);
+  const removeOpening = useConfiguratorStore((state) => state.removeOpening);
   const limits = PRESETS[config.preset].dimensionLimits;
   const roofPitch = roofPitchBounds(config.roof.type);
 
@@ -144,6 +168,7 @@ export function ControlPanel() {
                 />
               ))}
             </div>
+            <GuttersPanel config={config} updateGutters={updateGutters} />
           </PanelSection>
         )}
 
@@ -164,13 +189,14 @@ export function ControlPanel() {
         )}
 
         {activeTab === "openings" && (
-          <PanelSection title="Konfiguracja bramy" icon={PanelTop}>
-            {config.openings.map((opening) => (
-              <div key={opening.id} className="gate-config">
-                {opening.kind === "gate" && <GateFlow opening={opening} updateOpening={updateOpening} />}
-                <OpeningEditor opening={opening} updateOpening={updateOpening} dimensions={config.dimensions} />
-              </div>
-            ))}
+          <PanelSection title="Bramy, drzwi i okna" icon={DoorOpen}>
+            <OpeningsPanel
+              config={config}
+              updateOpening={updateOpening}
+              addOpening={addOpening}
+              duplicateOpening={duplicateOpening}
+              removeOpening={removeOpening}
+            />
           </PanelSection>
         )}
 
@@ -254,6 +280,62 @@ function resolveFlashingColors(roofColor) {
   };
 }
 
+function GuttersPanel({ config, updateGutters }) {
+  const [colorModalOpen, setColorModalOpen] = useState(false);
+  const roofColor = getRoofCladdingColor(config.cladding);
+  const color = config.gutters.color === "roof_match"
+    ? { ...GUTTER_COLORS.roof_match, hex: roofColor.hex, label: `Jak dach (${roofColor.label})` }
+    : GUTTER_COLORS[config.gutters.color] || GUTTER_COLORS.roof_match;
+
+  return (
+    <div className="flashings-panel gutters-panel-compact">
+      <div className="flashings-hero">
+        <div>
+          <span className="gutters-hero-label"><Droplets className="h-4 w-4" /> Orynnowanie</span>
+          <strong>Rynny i rury spustowe</strong>
+        </div>
+        <button className={cn("flashings-power", config.gutters.enabled && "active")} type="button" onClick={() => updateGutters({ enabled: !config.gutters.enabled })}>
+          {config.gutters.enabled ? "Wlaczone" : "Wylaczone"}
+        </button>
+      </div>
+
+      <div className="flashing-color-row">
+        <div>
+          <span>Kolor rynien</span>
+          <strong>{color.label}</strong>
+        </div>
+        <button className="title-color-button" type="button" onClick={() => setColorModalOpen(true)} aria-label={`Kolor rynien: ${color.label}`}>
+          <span className="color-chip" style={{ backgroundColor: color.hex }} />
+          <strong>{color.label}</strong>
+        </button>
+      </div>
+
+      <ColorModal
+        title="Kolor rynien"
+        colors={resolveGutterColors(roofColor)}
+        selected={config.gutters.color}
+        open={colorModalOpen}
+        onClose={() => setColorModalOpen(false)}
+        onSelect={(nextColor) => {
+          updateGutters({ color: nextColor });
+          setColorModalOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+
+function resolveGutterColors(roofColor) {
+  return {
+    roof_match: { label: `Jak dach (${roofColor.label})`, hex: roofColor.hex },
+    zinc: GUTTER_COLORS.zinc,
+    copper: GUTTER_COLORS.copper,
+    anthracite: GUTTER_COLORS.anthracite,
+    graphite: GUTTER_COLORS.graphite,
+    silver: GUTTER_COLORS.silver,
+  };
+}
+
 function ToggleRow({ label, description, checked, onChange }) {
   return (
     <button className={cn("toggle-row", checked && "active")} type="button" onClick={() => onChange(!checked)}>
@@ -268,6 +350,305 @@ function ToggleRow({ label, description, checked, onChange }) {
   );
 }
 
+function openingTitle(opening, index) {
+  const kind = opening.kind === "gate" ? "Brama" : opening.kind === "door" ? "Drzwi" : opening.kind === "roofWindow" ? "Okno dachowe" : "Okno";
+  return `${kind} ${index + 1}`;
+}
+
+function OpeningsPanel({ config, updateOpening, addOpening, duplicateOpening, removeOpening }) {
+  const [selectedId, setSelectedId] = useState(config.openings[0]?.id || null);
+  const selected = config.openings.find((opening) => opening.id === selectedId) || config.openings[0];
+  const selectedIndex = selected ? config.openings.findIndex((opening) => opening.id === selected.id) : -1;
+
+  const addAndSelect = (kind) => {
+    addOpening(kind);
+    queueMicrotask(() => {
+      const openings = useConfiguratorStore.getState().config.openings;
+      setSelectedId(openings.at(-1)?.id || null);
+    });
+  };
+
+  const duplicateAndSelect = (id) => {
+    duplicateOpening(id);
+    queueMicrotask(() => {
+      const openings = useConfiguratorStore.getState().config.openings;
+      setSelectedId(openings.at(-1)?.id || null);
+    });
+  };
+
+  return (
+    <div className="openings-manager">
+      <div className="opening-add-grid">
+        <button type="button" onClick={() => addAndSelect("gate")}>
+          <Plus className="h-4 w-4" />
+          <span>Brama</span>
+        </button>
+        <button type="button" onClick={() => addAndSelect("door")}>
+          <DoorOpen className="h-4 w-4" />
+          <span>Drzwi</span>
+        </button>
+        <button type="button" onClick={() => addAndSelect("window")}>
+          <Grid2X2Plus className="h-4 w-4" />
+          <span>Okno</span>
+        </button>
+        <button type="button" onClick={() => addAndSelect("roofWindow")}>
+          <ArrowUpRight className="h-4 w-4" />
+          <span>Dachowe</span>
+        </button>
+      </div>
+
+      {config.openings.length > 0 && (
+        <div className="opening-selector" role="tablist" aria-label="Otwory w obiekcie">
+          {config.openings.map((opening, index) => (
+            <button
+              key={opening.id}
+              type="button"
+              role="tab"
+              aria-selected={selected?.id === opening.id}
+              className={cn(selected?.id === opening.id && "active")}
+              onClick={() => setSelectedId(opening.id)}
+            >
+              <span>{openingTitle(opening, index)}</span>
+              <small>{opening.kind === "roofWindow" ? "Dach" : OPENING_WALLS[opening.wall]}</small>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!selected && (
+        <div className="opening-empty">
+          <DoorOpen className="h-5 w-5" />
+          <strong>Dodaj pierwszy otwór</strong>
+          <span>Wybierz bramę, drzwi lub okno. Ściana i konstrukcja zostaną dopasowane automatycznie.</span>
+        </div>
+      )}
+
+      {selected && (
+        <div className="opening-workspace">
+          <div className="opening-workspace-head">
+            <div>
+              <span>Edytowany element</span>
+              <strong>{openingTitle(selected, selectedIndex)}</strong>
+            </div>
+            <div className="opening-actions">
+              <button type="button" title="Duplikuj" aria-label="Duplikuj otwór" onClick={() => duplicateAndSelect(selected.id)}>
+                <Copy className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="danger"
+                title="Usuń"
+                aria-label="Usuń otwór"
+                onClick={() => {
+                  removeOpening(selected.id);
+                  setSelectedId(null);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {selected.kind === "gate" && <GateFlow opening={selected} updateOpening={updateOpening} />}
+          {selected.kind === "door" && <DoorFlow opening={selected} updateOpening={updateOpening} cladding={config.cladding} />}
+          {(selected.kind === "window" || selected.kind === "roofWindow") && <WindowFlow opening={selected} updateOpening={updateOpening} />}
+          <OpeningEditorV2 opening={selected} updateOpening={updateOpening} dimensions={config.dimensions} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DoorFlow({ opening, updateOpening, cladding }) {
+  const [colorModalOpen, setColorModalOpen] = useState(false);
+  const model = getDoorModel(opening);
+  const color = model.matchCladding ? getCladdingColor(cladding) : getDoorColor(opening);
+
+  const selectModel = (modelKey) => {
+    const next = DOOR_MODELS[modelKey];
+    updateOpening(opening.id, {
+      model: modelKey,
+      widthM: Math.max(next.widthRange[0], Math.min(next.widthRange[1], opening.widthM)),
+      heightM: Math.max(next.heightRange[0], Math.min(next.heightRange[1], opening.heightM)),
+    });
+  };
+
+  return (
+    <div className="opening-product-flow">
+      <div className="opening-product-title">
+        <div>
+          <span>Model drzwi</span>
+          <strong>{model.label}</strong>
+          <small>{model.note}</small>
+        </div>
+        <button
+          className="title-color-button"
+          type="button"
+          disabled={model.matchCladding}
+          onClick={() => !model.matchCladding && setColorModalOpen(true)}
+        >
+          <span className="color-chip" style={{ backgroundColor: color.hex }} />
+          <strong>{model.matchCladding ? `Jak poszycie (${color.label})` : color.label}</strong>
+        </button>
+      </div>
+      <ColorModal
+        title="Kolor drzwi"
+        colors={model.colors}
+        selected={opening.color}
+        open={colorModalOpen && !model.matchCladding}
+        onClose={() => setColorModalOpen(false)}
+        onSelect={(nextColor) => {
+          updateOpening(opening.id, { color: nextColor });
+          setColorModalOpen(false);
+        }}
+      />
+      <div className="opening-model-grid">
+        {Object.entries(DOOR_MODELS).map(([key, item]) => (
+          <button key={key} className={cn(opening.model === key && "active")} type="button" onClick={() => selectModel(key)}>
+            <strong>{item.label}</strong>
+            <small>{item.note}</small>
+            <span>{item.matchCladding ? "Profil i kolor ściany" : item.embossment === "sectional_panels" ? "Segmenty" : item.glazing ? "Z oknem" : "1 skrzydło"}</span>
+          </button>
+        ))}
+      </div>
+      <div className="opening-direction">
+        <span>Strona zawiasów</span>
+        <div className="segmented">
+          <button className={cn(opening.hinge !== "right" && "active")} type="button" onClick={() => updateOpening(opening.id, { hinge: "left" })}>Lewa</button>
+          <button className={cn(opening.hinge === "right" && "active")} type="button" onClick={() => updateOpening(opening.id, { hinge: "right" })}>Prawa</button>
+        </div>
+      </div>
+      <ToggleRow
+        label="Otwórz drzwi"
+        description="Animowany podgląd skrzydła i kierunku otwierania"
+        checked={!!opening.open}
+        onChange={(open) => updateOpening(opening.id, { open })}
+      />
+    </div>
+  );
+}
+
+function WindowFlow({ opening, updateOpening }) {
+  const [colorModalOpen, setColorModalOpen] = useState(false);
+  const model = getWindowModel(opening);
+  const orientation = getWindowOrientation(opening, model);
+  const frameColor = getWindowFrameColor(opening);
+  const glass = getWindowGlass(opening);
+  const operable = model.operation !== "fixed";
+  const requestedMode = opening.openMode || (opening.open ? "turn" : "closed");
+  const openMode = model.openModes.includes(requestedMode) ? requestedMode : "closed";
+  const roofPlacement = opening.kind === "roofWindow";
+  const availableModels = Object.entries(WINDOW_MODELS).filter(([, item]) =>
+    roofPlacement ? item.placement === "roof" : item.placement !== "roof",
+  );
+
+  const selectModel = (modelKey) => {
+    const next = WINDOW_MODELS[modelKey];
+    const nextOrientation = next.orientationModes?.includes(orientation) ? orientation : "horizontal";
+    const [defaultWidth, defaultHeight] = getWindowDefaultSize(next, nextOrientation);
+    const ranges = getWindowSizeRanges(next, nextOrientation);
+    const usePresetSize = Array.isArray(next.defaultSizeM);
+    updateOpening(opening.id, {
+      model: modelKey,
+      orientation: nextOrientation,
+      widthM: Math.max(ranges.widthRange[0], Math.min(ranges.widthRange[1], usePresetSize ? defaultWidth : opening.widthM)),
+      heightM: Math.max(ranges.heightRange[0], Math.min(ranges.heightRange[1], usePresetSize ? defaultHeight : opening.heightM)),
+      openMode: next.openModes.includes(openMode) ? openMode : "closed",
+      open: next.openModes.includes(openMode) ? openMode !== "closed" : false,
+    });
+  };
+
+  const setOrientation = (nextOrientation) => {
+    const [widthM, heightM] = getWindowDefaultSize(model, nextOrientation);
+    updateOpening(opening.id, {
+      orientation: nextOrientation,
+      widthM,
+      heightM,
+    });
+  };
+
+  return (
+    <div className="opening-product-flow">
+      <div className="opening-product-title">
+        <div>
+          <span>{roofPlacement ? "System okna dachowego" : "System okienny"}</span>
+          <strong>{model.label}</strong>
+          <small>{model.note}</small>
+        </div>
+        <button className="title-color-button" type="button" onClick={() => setColorModalOpen(true)}>
+          <span className="color-chip" style={{ backgroundColor: frameColor.hex }} />
+          <strong>{frameColor.label}</strong>
+        </button>
+      </div>
+      <ColorModal
+        title="Kolor ramy"
+        colors={OPENING_FRAME_COLORS}
+        selected={opening.frameColor}
+        open={colorModalOpen}
+        onClose={() => setColorModalOpen(false)}
+        onSelect={(frameColorKey) => {
+          updateOpening(opening.id, { frameColor: frameColorKey });
+          setColorModalOpen(false);
+        }}
+      />
+      <div className="opening-model-grid">
+        {availableModels.map(([key, item]) => (
+          <button key={key} className={cn(opening.model === key && "active")} type="button" onClick={() => selectModel(key)}>
+            <strong>{item.label}</strong>
+            <small>{item.note}</small>
+            <span>{item.panes} {item.panes === 1 ? "pole" : "pola"}</span>
+          </button>
+        ))}
+      </div>
+      {!roofPlacement && model.operation === "fixed" && model.orientationModes?.includes("vertical") && (
+        <div className="opening-direction">
+          <span>Ustawienie FIX</span>
+          <div className="segmented">
+            <button className={cn(orientation !== "vertical" && "active")} type="button" onClick={() => setOrientation("horizontal")}>Poziome</button>
+            <button className={cn(orientation === "vertical" && "active")} type="button" onClick={() => setOrientation("vertical")}>Pionowe</button>
+          </div>
+        </div>
+      )}
+      <Field label="Pakiet szybowy">
+        <Select value={opening.glassType} onChange={(event) => updateOpening(opening.id, { glassType: event.target.value })}>
+          {Object.entries(WINDOW_GLASS_TYPES).map(([key, item]) => (
+            <option key={key} value={key}>{item.label}</option>
+          ))}
+        </Select>
+      </Field>
+      <div className="opening-glass-preview">
+        <span style={{ backgroundColor: glass.tint }} />
+        <div>
+          <strong>{glass.label}</strong>
+          <small>{glass.transmission >= 0.75 ? "Dużo naturalnego światła" : "Większa prywatność i miękkie światło"}</small>
+        </div>
+      </div>
+      {operable && (
+        <>
+          {model.panes === 1 && (
+            <div className="opening-direction">
+              <span>Strona zawiasów</span>
+              <div className="segmented">
+                <button className={cn(opening.hinge !== "right" && "active")} type="button" onClick={() => updateOpening(opening.id, { hinge: "left" })}>Lewa</button>
+                <button className={cn(opening.hinge === "right" && "active")} type="button" onClick={() => updateOpening(opening.id, { hinge: "right" })}>Prawa</button>
+              </div>
+            </div>
+          )}
+          <div className="opening-direction window-operation">
+            <span>Sposób otwierania</span>
+            <div className="segmented three">
+              <button className={cn(openMode === "closed" && "active")} type="button" onClick={() => updateOpening(opening.id, { openMode: "closed" })}>Zamknięte</button>
+              <button className={cn(openMode === "turn" && "active")} type="button" onClick={() => updateOpening(opening.id, { openMode: "turn" })}>Rozwierne</button>
+              <button className={cn(openMode === "tilt" && "active")} type="button" onClick={() => updateOpening(opening.id, { openMode: "tilt" })}>Uchylne</button>
+            </div>
+            <small className="opening-operation-note">Klamka i skrzydło animują się zgodnie z wybranym trybem.</small>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function GateFlow({ opening, updateOpening }) {
   const [activeStep, setActiveStep] = useState(0);
   const [colorModalOpen, setColorModalOpen] = useState(false);
@@ -275,29 +656,41 @@ function GateFlow({ opening, updateOpening }) {
   const type = getGateType(opening);
   const model = getGateModel(opening);
   const color = getGateColor(opening);
+  const availableColors = getGateAvailableColors(opening);
+
+  const compatibleColor = (nextModel, structure, preferredColor) => {
+    const allowedKeys = nextModel.structureColors?.[structure] || Object.keys(nextModel.colors);
+    return allowedKeys.includes(preferredColor) && nextModel.colors[preferredColor]
+      ? preferredColor
+      : allowedKeys.find((key) => nextModel.colors[key]) || Object.keys(nextModel.colors)[0];
+  };
 
   const applyType = (gateType) => {
     const nextType = manufacturer.types[gateType];
     const nextModelKey = Object.keys(nextType.models)[0];
     const nextModel = nextType.models[nextModelKey];
+    const nextStructure = nextModel.defaultStructure || nextModel.structures?.[0] || "silkline";
     updateOpening(opening.id, {
       gateType,
       model: nextModelKey,
       pattern: nextModel.defaultPattern || "smooth",
-      structure: nextModel.structures ? nextModel.structures[0] : "smooth",
+      structure: nextStructure,
       layout: nextModel.defaultLayout || "vertical",
-      color: nextModel.colors[opening.color] ? opening.color : Object.keys(nextModel.colors)[0],
+      color: compatibleColor(nextModel, nextStructure, opening.color),
     });
   };
 
   const applyModel = (modelKey) => {
     const nextModel = type.models[modelKey];
+    const nextStructure = nextModel.structures
+      ? (nextModel.structures.includes(opening.structure) ? opening.structure : nextModel.defaultStructure || nextModel.structures[0])
+      : opening.structure;
     updateOpening(opening.id, {
       model: modelKey,
       pattern: nextModel.patterns ? (nextModel.patterns.includes(opening.pattern) ? opening.pattern : nextModel.defaultPattern) : opening.pattern,
-      structure: nextModel.structures ? (nextModel.structures.includes(opening.structure) ? opening.structure : nextModel.structures[0]) : opening.structure,
+      structure: nextStructure,
       layout: nextModel.layouts ? (nextModel.layouts.includes(opening.layout) ? opening.layout : nextModel.defaultLayout) : opening.layout,
-      color: nextModel.colors[opening.color] ? opening.color : Object.keys(nextModel.colors)[0],
+      color: compatibleColor(nextModel, nextStructure, opening.color),
     });
   };
 
@@ -350,18 +743,18 @@ function GateFlow({ opening, updateOpening }) {
         onSelect: () => updateOpening(opening.id, { pattern: key }),
       })),
     });
-  }
-
-  if (opening.gateType === "tilting") {
     steps.push({
-      id: "layout",
-      label: "Układ wypełnienia",
-      options: (model.layouts || []).map((key) => ({
+      id: "structure",
+      label: "Struktura powierzchni",
+      options: (model.structures || []).map((key) => ({
         key,
-        label: TILTING_LAYOUTS[key].label,
-        meta: TILTING_LAYOUTS[key].description,
-        active: opening.layout === key,
-        onSelect: () => updateOpening(opening.id, { layout: key }),
+        label: GATE_STRUCTURES[key].label,
+        meta: GATE_STRUCTURES[key].description,
+        active: opening.structure === key,
+        onSelect: () => updateOpening(opening.id, {
+          structure: key,
+          color: compatibleColor(model, key, opening.color),
+        }),
       })),
     });
   }
@@ -395,7 +788,7 @@ function GateFlow({ opening, updateOpening }) {
         </div>
         <ColorModal
           title="Kolor bramy"
-          colors={model.colors}
+          colors={availableColors}
           selected={opening.color}
           open={colorModalOpen}
           onClose={() => setColorModalOpen(false)}
@@ -404,7 +797,14 @@ function GateFlow({ opening, updateOpening }) {
             setColorModalOpen(false);
           }}
         />
-        <div className={cn("cladding-option-list", "compact", currentStep.id === "pattern" && "gate-pattern-list")}>
+        <div
+          className={cn(
+            "cladding-option-list",
+            "compact",
+            currentStep.id === "pattern" && "gate-pattern-list",
+            opening.gateType === "tilting" && currentStep.id === "model" && "tilting-model-list",
+          )}
+        >
           {currentStep.options.map((option) => (
             <button key={option.key} className={cn("cladding-option", option.image && "gate-pattern-option", option.active && "active")} onClick={() => selectOption(option)} type="button">
               {option.image && (
@@ -801,9 +1201,24 @@ function RangeControl({ label, value, display, min, max, step, onChange, compact
 }
 
 function OpeningEditor({ opening, updateOpening, dimensions }) {
-  const title = opening.kind === "gate" ? "Brama" : opening.kind === "door" ? "Drzwi" : "Okno";
-  const wallSpan = opening.wall === "front" || opening.wall === "back" ? dimensions.widthM : dimensions.lengthM;
+  const title = opening.kind === "gate" ? "Brama" : opening.kind === "door" ? "Drzwi" : opening.kind === "roofWindow" ? "Okno dachowe" : "Okno";
+  const roofPlacement = opening.kind === "roofWindow";
+  const wallSpan = roofPlacement ? dimensions.widthM : opening.wall === "front" || opening.wall === "back" ? dimensions.widthM : dimensions.lengthM;
   const offsetLimit = Math.max(0.1, (wallSpan - opening.widthM) / 2 - 0.25);
+  const model = opening.kind === "door"
+    ? getDoorModel(opening)
+    : opening.kind === "window" || opening.kind === "roofWindow"
+      ? getWindowModel(opening)
+      : null;
+  const orientation = model ? getWindowOrientation(opening, model) : "horizontal";
+  const windowRanges = model ? getWindowSizeRanges(model, orientation) : null;
+  const widthRange = opening.kind === "gate" ? [1.8, 6] : windowRanges?.widthRange || model?.widthRange || [0.5, 3.6];
+  const heightRange = opening.kind === "gate" ? [1.8, 4.5] : windowRanges?.heightRange || model?.heightRange || [0.4, 1.8];
+  const maxWidth = Math.max(widthRange[0], Math.min(widthRange[1], wallSpan - 0.8));
+  const maxHeight = roofPlacement
+    ? Math.max(heightRange[0], Math.min(heightRange[1], dimensions.lengthM - 0.8))
+    : Math.max(heightRange[0], Math.min(heightRange[1], dimensions.wallHeightM - opening.sillM - 0.25));
+  const roofDepthLimit = Math.max(0.1, (dimensions.lengthM - opening.heightM) / 2 - 0.3);
 
   return (
     <div className="opening-editor premium">
@@ -811,17 +1226,89 @@ function OpeningEditor({ opening, updateOpening, dimensions }) {
         <PanelTop className="h-4 w-4" />
         <span>{title}</span>
       </div>
-      <div className="thickness-grid">
+      {!roofPlacement && <div className="thickness-grid">
         <Field label="Sciana">
           <Select value={opening.wall} onChange={(event) => updateOpening(opening.id, { wall: event.target.value })}>
             {Object.entries(OPENING_WALLS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
           </Select>
         </Field>
-      </div>
+      </div>}
       <div className="control-stack">
-        <RangeControl label="Pozycja" value={opening.offsetM} display={formatMeters(opening.offsetM)} min={-offsetLimit} max={offsetLimit} step={0.05} onChange={(value) => updateOpening(opening.id, { offsetM: value })} />
-        <RangeControl label="Szerokosc" value={opening.widthM} display={formatMeters(opening.widthM)} min={0.6} max={Math.max(0.8, wallSpan - 0.8)} step={0.05} onChange={(value) => updateOpening(opening.id, { widthM: value })} />
-        <RangeControl label="Wysokosc" value={opening.heightM} display={formatMeters(opening.heightM)} min={0.5} max={Math.max(0.8, dimensions.wallHeightM - opening.sillM - 0.25)} step={0.05} onChange={(value) => updateOpening(opening.id, { heightM: value })} />
+        <RangeControl label={roofPlacement ? "Pozycja w poprzek dachu" : "Pozycja"} value={opening.offsetM} display={formatMeters(opening.offsetM)} min={-offsetLimit} max={offsetLimit} step={0.05} onChange={(value) => updateOpening(opening.id, { offsetM: value })} />
+        {roofPlacement && (
+          <RangeControl label="Pozycja wzdluz dachu" value={opening.sillM} display={formatMeters(opening.sillM)} min={-roofDepthLimit} max={roofDepthLimit} step={0.05} onChange={(value) => updateOpening(opening.id, { sillM: value })} />
+        )}
+        <RangeControl label="Szerokość" value={opening.widthM} display={formatMeters(opening.widthM)} min={widthRange[0]} max={maxWidth} step={0.05} onChange={(value) => updateOpening(opening.id, { widthM: value })} />
+        <RangeControl label="Wysokość" value={opening.heightM} display={formatMeters(opening.heightM)} min={heightRange[0]} max={maxHeight} step={0.05} onChange={(value) => updateOpening(opening.id, { heightM: value })} />
+        {opening.kind === "window" && (
+          <RangeControl
+            label="Wysokość parapetu"
+            value={opening.sillM}
+            display={formatMeters(opening.sillM)}
+            min={0.35}
+            max={Math.max(0.35, dimensions.wallHeightM - opening.heightM - 0.25)}
+            step={0.05}
+            onChange={(value) => updateOpening(opening.id, { sillM: value })}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OpeningEditorV2({ opening, updateOpening, dimensions }) {
+  const roofPlacement = opening.kind === "roofWindow";
+  const title = opening.kind === "gate" ? "Brama" : opening.kind === "door" ? "Drzwi" : roofPlacement ? "Okno dachowe" : "Okno";
+  const wallSpan = roofPlacement ? dimensions.widthM : opening.wall === "front" || opening.wall === "back" ? dimensions.widthM : dimensions.lengthM;
+  const offsetLimit = Math.max(0.1, (wallSpan - opening.widthM) / 2 - 0.25);
+  const model = opening.kind === "door"
+    ? getDoorModel(opening)
+    : opening.kind === "window" || roofPlacement
+      ? getWindowModel(opening)
+      : null;
+  const orientation = model ? getWindowOrientation(opening, model) : "horizontal";
+  const windowRanges = model ? getWindowSizeRanges(model, orientation) : null;
+  const widthRange = opening.kind === "gate" ? [1.8, 6] : windowRanges?.widthRange || model?.widthRange || [0.5, 3.6];
+  const heightRange = opening.kind === "gate" ? [1.8, 4.5] : windowRanges?.heightRange || model?.heightRange || [0.4, 1.8];
+  const maxWidth = Math.max(widthRange[0], Math.min(widthRange[1], wallSpan - 0.8));
+  const maxHeight = roofPlacement
+    ? Math.max(heightRange[0], Math.min(heightRange[1], dimensions.lengthM - 0.8))
+    : Math.max(heightRange[0], Math.min(heightRange[1], dimensions.wallHeightM - opening.sillM - 0.25));
+  const roofDepthLimit = Math.max(0.1, (dimensions.lengthM - opening.heightM) / 2 - 0.3);
+
+  return (
+    <div className="opening-editor premium">
+      <div className="opening-title">
+        <PanelTop className="h-4 w-4" />
+        <span>{title}</span>
+      </div>
+      {!roofPlacement && (
+        <div className="thickness-grid">
+          <Field label="Sciana">
+            <Select value={opening.wall} onChange={(event) => updateOpening(opening.id, { wall: event.target.value })}>
+              {Object.entries(OPENING_WALLS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </Select>
+          </Field>
+        </div>
+      )}
+      <div className="control-stack">
+        <RangeControl label={roofPlacement ? "Pozycja w poprzek dachu" : "Pozycja"} value={opening.offsetM} display={formatMeters(opening.offsetM)} min={-offsetLimit} max={offsetLimit} step={0.05} onChange={(value) => updateOpening(opening.id, { offsetM: value })} />
+        {roofPlacement && (
+          <RangeControl label="Pozycja wzdluz dachu" value={opening.sillM} display={formatMeters(opening.sillM)} min={-roofDepthLimit} max={roofDepthLimit} step={0.05} onChange={(value) => updateOpening(opening.id, { sillM: value })} />
+        )}
+        <RangeControl label="Szerokosc" value={opening.widthM} display={formatMeters(opening.widthM)} min={widthRange[0]} max={maxWidth} step={0.05} onChange={(value) => updateOpening(opening.id, { widthM: value })} />
+        <RangeControl label={roofPlacement ? "Dlugosc na polaci" : "Wysokosc"} value={opening.heightM} display={formatMeters(opening.heightM)} min={heightRange[0]} max={maxHeight} step={0.05} onChange={(value) => updateOpening(opening.id, { heightM: value })} />
+        {opening.kind === "window" && (
+          <RangeControl
+            label="Wysokosc parapetu"
+            value={opening.sillM}
+            display={formatMeters(opening.sillM)}
+            min={0.35}
+            max={Math.max(0.35, dimensions.wallHeightM - opening.heightM - 0.25)}
+            step={0.05}
+            onChange={(value) => updateOpening(opening.id, { sillM: value })}
+          />
+        )}
       </div>
     </div>
   );

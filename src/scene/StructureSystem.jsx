@@ -186,25 +186,88 @@ function splitAroundOpenings(start, end, openings, level, clearance = 0.12) {
   return start <= end ? segments : segments.map(([a, b]) => [b, a]);
 }
 
-function columnBlockedByOpening(config, wall, coord) {
-  return wallOpenings(config, wall).some((opening) => {
-    if (opening.kind !== "gate" && opening.kind !== "door") return false;
-    if (opening.sillM > 0.15) return false;
-    const center = openingWallCoord(opening);
-    return Math.abs(coord - center) < opening.widthM / 2 + 0.08;
-  });
+// Rygle, podwaliny, oczepy i platwie sa wspawane MIEDZY elementy poprzeczne
+// (slupy, krokwie), a nie przenikaja przez nie — tniemy je na odcinki
+// z przerwa na kazdy element noszacy.
+function splitAtMembers(start, end, members, minLength = 0.1) {
+  const min = Math.min(start, end);
+  const max = Math.max(start, end);
+  const segments = [];
+  let cursor = min;
+  [...members]
+    .sort((a, b) => a.coord - b.coord)
+    .forEach(({ coord, size }) => {
+      const a = coord - size / 2 - 0.003;
+      const b = coord + size / 2 + 0.003;
+      if (b <= cursor || a >= max) return;
+      if (a - cursor > minLength) segments.push([cursor, a]);
+      cursor = Math.max(cursor, b);
+    });
+  if (max - cursor > minLength) segments.push([cursor, max]);
+  return start <= end ? segments : segments.map(([a, b]) => [b, a]);
 }
 
-function roofYOnRun(runCoord, config, runSpan) {
+// Odcinki rygla/podwaliny: najpierw wyciecie otworow, potem przerwy na slupy.
+function railSegments(start, end, openings, level, members) {
+  return splitAroundOpenings(start, end, openings, level).flatMap(([a, b]) => splitAtMembers(a, b, members));
+}
+
+function blockingOpeningAt(config, wall, coord) {
+  return (
+    wallOpenings(config, wall).find((opening) => {
+      if (opening.kind !== "gate" && opening.kind !== "door") return false;
+      if (opening.sillM > 0.15) return false;
+      const center = openingWallCoord(opening);
+      return Math.abs(coord - center) < opening.widthM / 2 + 0.08;
+    }) ?? null
+  );
+}
+
+function columnBlockedByOpening(config, wall, coord) {
+  return Boolean(blockingOpeningAt(config, wall, coord));
+}
+
+// Poziom osi nadproza otworu — musi byc spojny z headerY w OpeningFrames.
+function openingHeaderY(opening, spec) {
+  const frameSize = opening.kind === "gate" ? spec.gateFrameSize ?? 0.1 : spec.endColumnSize;
+  return opening.sillM + opening.heightM + frameSize * 0.45;
+}
+
+// Slupek nadprozowy: gdy w osi slupa stoi brama/drzwi, slup nie znika —
+// skraca sie i opiera na wzmocnionym nadprozu otworu, zeby rygiel/krokiew
+// nad otworem nie wisial w powietrzu.
+function OverOpeningPost({ position, fromY, topY, size }) {
+  if (topY - fromY < 0.12) return null;
+  return (
+    <>
+      <Beam start={[position[0], fromY, position[2]]} end={[position[0], topY, position[2]]} size={size} />
+      <JointBlock position={[position[0], fromY, position[2]]} size={size * 0.6} />
+    </>
+  );
+}
+
+// Rzeczywisty bieg polaci = pelny wymiar budynku wzdluz osi spadu (nie zwezony
+// rozstaw ram). Musi byc spojny z wallTopHeightAt w geometry.js.
+function roofRun(config) {
+  const { widthM, lengthM } = config.dimensions;
+  return ROOF_RUN_X.has(config.roof.type) ? widthM : lengthM;
+}
+
+// Wysokosc linii dachu na wspolrzednej biegu. Spadek liczymy po RZECZYWISTYM
+// biegu polaci, a nie po runSpan — inaczej krokwie i slupy mialy inny spadek
+// niz realny dach i w niektorych miejscach przebijaly poszycie (lub od niego
+// odstawaly). Trzeci argument (runSpan) jest ignorowany dla zgodnosci wywolan.
+function roofYOnRun(runCoord, config) {
   const { wallHeightM } = config.dimensions;
   const { rise } = roofMetrics(config);
   const base = wallHeightM - 0.14;
-  const t = (runCoord + runSpan / 2) / runSpan;
+  const run = roofRun(config);
+  const t = (runCoord + run / 2) / run;
   const type = config.roof.type;
 
   if (type === "single_right" || type === "single_front") return base + rise * (1 - t);
   if (type === "single_left" || type === "single_back") return base + rise * t;
-  return base + rise * (1 - Math.min(1, Math.abs(runCoord) / (runSpan / 2)));
+  return base + rise * (1 - Math.min(1, Math.abs(runCoord) / (run / 2)));
 }
 
 function isGable(type) {
@@ -294,27 +357,38 @@ function PrimaryFrame({ config, runAxis, runSpan, longCoord, spec }) {
   const leftY = roofYOnRun(left, config, runSpan);
   const rightY = roofYOnRun(right, config, runSpan);
   const ridgeY = roofYOnRun(0, config, runSpan);
-  const columnTopLeft = leftY + spec.rafterSize * 0.08;
-  const columnTopRight = rightY + spec.rafterSize * 0.08;
+  // Slup konczy sie na SPODZIE krokwi (nie przebija jej w polowie przekroju).
+  const columnTopLeft = leftY - spec.rafterSize / 2;
+  const columnTopRight = rightY - spec.rafterSize / 2;
   const leftWall = wallForRunSide(runAxis, left);
   const rightWall = wallForRunSide(runAxis, right);
-  const skipLeftColumn = columnBlockedByOpening(config, leftWall, longCoord);
-  const skipRightColumn = columnBlockedByOpening(config, rightWall, longCoord);
+  const leftBlocking = blockingOpeningAt(config, leftWall, longCoord);
+  const rightBlocking = blockingOpeningAt(config, rightWall, longCoord);
 
   return (
     <group name={`primary-frame-${longCoord.toFixed(2)}`}>
-      {!skipLeftColumn && (
-        <>
-          <Column position={pointFromAxes(runAxis, left, longCoord, 0)} topY={columnTopLeft} size={spec.columnSize} />
-          <JointBlock position={pointFromAxes(runAxis, left, longCoord, leftY)} size={spec.columnSize * 0.58} />
-        </>
+      {leftBlocking ? (
+        <OverOpeningPost
+          position={pointFromAxes(runAxis, left, longCoord, 0)}
+          fromY={openingHeaderY(leftBlocking, spec)}
+          topY={columnTopLeft}
+          size={spec.columnSize * 0.8}
+        />
+      ) : (
+        <Column position={pointFromAxes(runAxis, left, longCoord, 0)} topY={columnTopLeft} size={spec.columnSize} />
       )}
-      {!skipRightColumn && (
-        <>
-          <Column position={pointFromAxes(runAxis, right, longCoord, 0)} topY={columnTopRight} size={spec.columnSize} />
-          <JointBlock position={pointFromAxes(runAxis, right, longCoord, rightY)} size={spec.columnSize * 0.58} />
-        </>
+      <JointBlock position={pointFromAxes(runAxis, left, longCoord, leftY)} size={spec.columnSize * 0.58} />
+      {rightBlocking ? (
+        <OverOpeningPost
+          position={pointFromAxes(runAxis, right, longCoord, 0)}
+          fromY={openingHeaderY(rightBlocking, spec)}
+          topY={columnTopRight}
+          size={spec.columnSize * 0.8}
+        />
+      ) : (
+        <Column position={pointFromAxes(runAxis, right, longCoord, 0)} topY={columnTopRight} size={spec.columnSize} />
       )}
+      <JointBlock position={pointFromAxes(runAxis, right, longCoord, rightY)} size={spec.columnSize * 0.58} />
 
       {isGable(config.roof.type) ? (
         <>
@@ -326,47 +400,74 @@ function PrimaryFrame({ config, runAxis, runSpan, longCoord, spec }) {
         <Beam start={pointFromAxes(runAxis, left, longCoord, leftY)} end={pointFromAxes(runAxis, right, longCoord, rightY)} size={spec.rafterSize} />
       )}
 
-      <Beam
-        start={pointFromAxes(runAxis, left, longCoord, columnTopLeft - 0.5)}
-        end={pointFromAxes(runAxis, Math.min(left + spec.haunchLength, -0.05), longCoord, roofYOnRun(Math.min(left + spec.haunchLength, -0.05), config, runSpan) - 0.03)}
-        size={spec.braceSize}
-        material={materials.trim}
-      />
-      <Beam
-        start={pointFromAxes(runAxis, right, longCoord, columnTopRight - 0.5)}
-        end={pointFromAxes(runAxis, Math.max(right - spec.haunchLength, 0.05), longCoord, roofYOnRun(Math.max(right - spec.haunchLength, 0.05), config, runSpan) - 0.03)}
-        size={spec.braceSize}
-        material={materials.trim}
-      />
+      {(!leftBlocking || columnTopLeft - 0.5 > openingHeaderY(leftBlocking, spec) + 0.05) && (
+        <Beam
+          start={pointFromAxes(runAxis, left, longCoord, columnTopLeft - 0.5)}
+          end={pointFromAxes(runAxis, Math.min(left + spec.haunchLength, -0.05), longCoord, roofYOnRun(Math.min(left + spec.haunchLength, -0.05), config, runSpan) - 0.03)}
+          size={spec.braceSize}
+          material={materials.trim}
+        />
+      )}
+      {(!rightBlocking || columnTopRight - 0.5 > openingHeaderY(rightBlocking, spec) + 0.05) && (
+        <Beam
+          start={pointFromAxes(runAxis, right, longCoord, columnTopRight - 0.5)}
+          end={pointFromAxes(runAxis, Math.max(right - spec.haunchLength, 0.05), longCoord, roofYOnRun(Math.max(right - spec.haunchLength, 0.05), config, runSpan) - 0.03)}
+          size={spec.braceSize}
+          material={materials.trim}
+        />
+      )}
     </group>
   );
 }
 
 function EndWallFrame({ config, runAxis, runSpan, longCoord, spec }) {
-  const postRuns = positionsBySpacing(runSpan, 2.25, 5);
+  // Bez skrajnych pozycji — w narozach stoja juz slupy ramy glownej
+  // (wczesniej slupek sciany szczytowej dublowal sie ze slupem ramy).
+  const postRuns = positionsBySpacing(runSpan, 2.25, 5).slice(1, -1);
   const levels = levelsBelow(config.dimensions.wallHeightM, spec.wallGirtSpacing);
   const wall = wallForLongSide(runAxis, longCoord);
   const openings = wallOpenings(config, wall);
+  const girtMembers = [
+    { coord: -runSpan / 2, size: spec.columnSize },
+    { coord: runSpan / 2, size: spec.columnSize },
+    ...postRuns
+      .filter((runCoord) => !blockingOpeningAt(config, wall, runCoord))
+      .map((runCoord) => ({ coord: runCoord, size: spec.endColumnSize })),
+  ];
 
   return (
     <group name={`endwall-frame-${longCoord.toFixed(2)}`}>
-      {postRuns.filter((runCoord) => !columnBlockedByOpening(config, wall, runCoord)).map((runCoord) => (
-        <group key={`end-post-${longCoord}-${runCoord}`}>
-          <Column
-            position={pointFromAxes(runAxis, runCoord, longCoord, 0)}
-            topY={roofYOnRun(runCoord, config, runSpan) + spec.endColumnSize * 0.2}
-            size={spec.endColumnSize}
-            material={materials.trim}
-          />
-          <JointBlock
-            position={pointFromAxes(runAxis, runCoord, longCoord, roofYOnRun(runCoord, config, runSpan))}
-            size={spec.endColumnSize * 0.58}
-          />
-        </group>
-      ))}
+      {postRuns.map((runCoord) => {
+        const blocking = blockingOpeningAt(config, wall, runCoord);
+        // Slupek konczy sie pod krokwia ramy szczytowej.
+        const topY = roofYOnRun(runCoord, config, runSpan) - spec.rafterSize / 2;
+        return (
+          <group key={`end-post-${longCoord}-${runCoord}`}>
+            {blocking ? (
+              <OverOpeningPost
+                position={pointFromAxes(runAxis, runCoord, longCoord, 0)}
+                fromY={openingHeaderY(blocking, spec)}
+                topY={topY}
+                size={spec.endColumnSize}
+              />
+            ) : (
+              <Column
+                position={pointFromAxes(runAxis, runCoord, longCoord, 0)}
+                topY={topY}
+                size={spec.endColumnSize}
+                material={materials.trim}
+              />
+            )}
+            <JointBlock
+              position={pointFromAxes(runAxis, runCoord, longCoord, topY)}
+              size={spec.endColumnSize * 0.58}
+            />
+          </group>
+        );
+      })}
       {levels.map((level) =>
         trimmedRunForLevel(level, config, runSpan).map(([startRun, endRun], index) => (
-          splitAroundOpenings(startRun, endRun, openings, level).map(([segmentStart, segmentEnd], segmentIndex) => (
+          railSegments(startRun, endRun, openings, level, girtMembers).map(([segmentStart, segmentEnd], segmentIndex) => (
             <Beam
               key={`end-girt-${longCoord}-${level}-${index}-${segmentIndex}`}
               start={pointFromAxes(runAxis, segmentStart, longCoord, level)}
@@ -381,55 +482,66 @@ function EndWallFrame({ config, runAxis, runSpan, longCoord, spec }) {
   );
 }
 
-function RoofSecondary({ config, runAxis, runSpan, longSpan, spec }) {
+function RoofSecondary({ config, runAxis, runSpan, longSpan, framePositions, spec }) {
   const runPositions = positionsBySpacing(runSpan, 1.35, 3);
   const longStart = -longSpan / 2;
   const longEnd = longSpan / 2;
   const eaves = [-runSpan / 2, runSpan / 2];
+  // Platwie sa wspawane miedzy krokwie ram (nie przenikaja ich), z gorna
+  // plaszczyzna zlicowana z gorna plaszczyzna krokwi — na tym lezy poszycie.
+  const rafterMembers = framePositions.map((longCoord) => ({ coord: longCoord, size: spec.rafterSize }));
+  const flushTopY = (runCoord, size) => roofYOnRun(runCoord, config, runSpan) + spec.rafterSize / 2 - size / 2;
 
   return (
     <group name="roof-secondary">
-      {runPositions.map((runCoord) => (
-        <Beam
-          key={`purlin-${runCoord}`}
-          start={pointFromAxes(runAxis, runCoord, longStart, roofYOnRun(runCoord, config, runSpan) + spec.purlinSize * 0.2)}
-          end={pointFromAxes(runAxis, runCoord, longEnd, roofYOnRun(runCoord, config, runSpan) + spec.purlinSize * 0.2)}
-          size={spec.purlinSize}
-          material={materials.trim}
-        />
-      ))}
-      {eaves.map((runCoord) => (
-        <Beam
-          key={`eave-strut-${runCoord}`}
-          start={pointFromAxes(runAxis, runCoord, longStart, roofYOnRun(runCoord, config, runSpan))}
-          end={pointFromAxes(runAxis, runCoord, longEnd, roofYOnRun(runCoord, config, runSpan))}
-          size={spec.purlinSize * 1.15}
-          material={materials.steel}
-        />
-      ))}
-      {isGable(config.roof.type) && (
-        <Beam
-          start={pointFromAxes(runAxis, 0, longStart, roofYOnRun(0, config, runSpan) + spec.purlinSize * 0.2)}
-          end={pointFromAxes(runAxis, 0, longEnd, roofYOnRun(0, config, runSpan) + spec.purlinSize * 0.2)}
-          size={spec.purlinSize * 1.2}
-          material={materials.steel}
-        />
+      {runPositions.map((runCoord) =>
+        splitAtMembers(longStart, longEnd, rafterMembers).map(([a, b], index) => (
+          <Beam
+            key={`purlin-${runCoord}-${index}`}
+            start={pointFromAxes(runAxis, runCoord, a, flushTopY(runCoord, spec.purlinSize))}
+            end={pointFromAxes(runAxis, runCoord, b, flushTopY(runCoord, spec.purlinSize))}
+            size={spec.purlinSize}
+            material={materials.trim}
+          />
+        )),
       )}
+      {eaves.map((runCoord) =>
+        splitAtMembers(longStart, longEnd, rafterMembers).map(([a, b], index) => (
+          <Beam
+            key={`eave-strut-${runCoord}-${index}`}
+            start={pointFromAxes(runAxis, runCoord, a, flushTopY(runCoord, spec.purlinSize * 1.15))}
+            end={pointFromAxes(runAxis, runCoord, b, flushTopY(runCoord, spec.purlinSize * 1.15))}
+            size={spec.purlinSize * 1.15}
+            material={materials.steel}
+          />
+        )),
+      )}
+      {isGable(config.roof.type) &&
+        splitAtMembers(longStart, longEnd, rafterMembers).map(([a, b], index) => (
+          <Beam
+            key={`ridge-purlin-${index}`}
+            start={pointFromAxes(runAxis, 0, a, flushTopY(0, spec.purlinSize * 1.2))}
+            end={pointFromAxes(runAxis, 0, b, flushTopY(0, spec.purlinSize * 1.2))}
+            size={spec.purlinSize * 1.2}
+            material={materials.steel}
+          />
+        ))}
     </group>
   );
 }
 
-function WallSecondary({ config, runAxis, runSpan, longSpan, spec }) {
+function WallSecondary({ config, runAxis, runSpan, longSpan, framePositions, spec }) {
   const sideLevels = levelsBelow(config.dimensions.wallHeightM, spec.wallGirtSpacing);
   const longStart = -longSpan / 2;
   const longEnd = longSpan / 2;
   const runSides = [-runSpan / 2, runSpan / 2];
+  const columnMembers = framePositions.map((longCoord) => ({ coord: longCoord, size: spec.columnSize }));
 
   return (
     <group name="wall-secondary">
       {runSides.map((runCoord) =>
         sideLevels.map((level) =>
-          splitAroundOpenings(longStart, longEnd, wallOpenings(config, wallForRunSide(runAxis, runCoord)), level).map(([segmentStart, segmentEnd], segmentIndex) => (
+          railSegments(longStart, longEnd, wallOpenings(config, wallForRunSide(runAxis, runCoord)), level, columnMembers).map(([segmentStart, segmentEnd], segmentIndex) => (
             <Beam
               key={`side-girt-${runCoord}-${level}-${segmentIndex}`}
               start={pointFromAxes(runAxis, runCoord, segmentStart, level)}
@@ -444,24 +556,46 @@ function WallSecondary({ config, runAxis, runSpan, longSpan, spec }) {
   );
 }
 
-function VerticalBracing({ config, runAxis, runSpan, longSpan, framePositions, spec }) {
-  const longStart = framePositions[0] ?? -longSpan / 2;
-  const longSecond = framePositions[1] ?? longStart + Math.min(2, longSpan * 0.4);
-  const longPenultimate = framePositions.at(-2) ?? -longSecond;
-  const longEnd = framePositions.at(-1) ?? longSpan / 2;
+// Czy przeslo [a, b] na danej scianie koliduje z jakims otworem (brama, drzwi,
+// okno). Stezen krzyzowych nie wolno prowadzic przez swiatlo otworu.
+function bayIntersectsOpening(config, wall, a, b) {
+  const min = Math.min(a, b);
+  const max = Math.max(a, b);
+  return wallOpenings(config, wall).some((opening) => {
+    const center = openingWallCoord(opening);
+    const half = opening.widthM / 2 + 0.15;
+    return center + half > min + 0.05 && center - half < max - 0.05;
+  });
+}
+
+// Wybor przesel pod stezenia: najblizsze wolne przeslo od kazdego konca sciany.
+// Gdy cala sciana jest zabudowana otworami — stezen na niej nie ma.
+function bracedBaysForWall(config, wall, framePositions) {
+  const bays = framePositions.slice(0, -1).map((a, index) => [a, framePositions[index + 1]]);
+  const free = bays.filter(([a, b]) => Math.abs(b - a) > 0.3 && !bayIntersectsOpening(config, wall, a, b));
+  if (!free.length) return [];
+  const first = free[0];
+  const last = free.at(-1);
+  return first === last ? [first] : [first, last];
+}
+
+function VerticalBracing({ config, runAxis, runSpan, framePositions, spec }) {
   const y0 = 0.35;
   const type = config.roof.type;
 
   return (
     <group name="hall-bracing">
       {[-runSpan / 2, runSpan / 2].map((runCoord) => {
+        const wall = wallForRunSide(runAxis, runCoord);
         const y1 = roofYOnRun(runCoord, config, runSpan) - spec.girtSize;
         return (
           <group key={`wall-x-brace-${runCoord}`}>
-            <Beam start={pointFromAxes(runAxis, runCoord, longStart, y0)} end={pointFromAxes(runAxis, runCoord, longSecond, y1)} size={spec.braceSize} material={materials.trim} />
-            <Beam start={pointFromAxes(runAxis, runCoord, longStart, y1)} end={pointFromAxes(runAxis, runCoord, longSecond, y0)} size={spec.braceSize} material={materials.trim} />
-            <Beam start={pointFromAxes(runAxis, runCoord, longPenultimate, y0)} end={pointFromAxes(runAxis, runCoord, longEnd, y1)} size={spec.braceSize} material={materials.trim} />
-            <Beam start={pointFromAxes(runAxis, runCoord, longPenultimate, y1)} end={pointFromAxes(runAxis, runCoord, longEnd, y0)} size={spec.braceSize} material={materials.trim} />
+            {bracedBaysForWall(config, wall, framePositions).map(([a, b]) => (
+              <group key={`brace-bay-${a.toFixed(2)}`}>
+                <Beam start={pointFromAxes(runAxis, runCoord, a, y0)} end={pointFromAxes(runAxis, runCoord, b, y1)} size={spec.braceSize} material={materials.trim} />
+                <Beam start={pointFromAxes(runAxis, runCoord, a, y1)} end={pointFromAxes(runAxis, runCoord, b, y0)} size={spec.braceSize} material={materials.trim} />
+              </group>
+            ))}
           </group>
         );
       })}
@@ -474,14 +608,14 @@ function roofBracePair(config, runAxis, a, b, startRun, endRun, runSpan, size, k
   return (
     <group key={key}>
       <Beam
-        start={pointFromAxes(runAxis, startRun, a, roofYOnRun(startRun, config, runSpan) + 0.08)}
-        end={pointFromAxes(runAxis, endRun, b, roofYOnRun(endRun, config, runSpan) + 0.08)}
+        start={pointFromAxes(runAxis, startRun, a, roofYOnRun(startRun, config, runSpan))}
+        end={pointFromAxes(runAxis, endRun, b, roofYOnRun(endRun, config, runSpan))}
         size={size}
         material={materials.trim}
       />
       <Beam
-        start={pointFromAxes(runAxis, endRun, a, roofYOnRun(endRun, config, runSpan) + 0.08)}
-        end={pointFromAxes(runAxis, startRun, b, roofYOnRun(startRun, config, runSpan) + 0.08)}
+        start={pointFromAxes(runAxis, endRun, a, roofYOnRun(endRun, config, runSpan))}
+        end={pointFromAxes(runAxis, startRun, b, roofYOnRun(startRun, config, runSpan))}
         size={size}
         material={materials.trim}
       />
@@ -543,8 +677,12 @@ function OpeningFrames({ config, spec }) {
         const isGate = opening.kind === "gate";
         const size = isGate ? spec.gateFrameSize ?? spec.columnSize * 0.72 : spec.endColumnSize;
         const jambOffset = isGate ? Math.max(0.12, size * 1.35) : Math.max(0.08, size);
-        const leftJamb = Math.max(-span / 2 + 0.12, left - jambOffset);
-        const rightJamb = Math.min(span / 2 - 0.12, right + jambOffset);
+        // Stojak ramy nie moze najechac na slup narozny — granica to lico
+        // slupa naroznego minus polowa stojaka i mala szczelina montazowa.
+        const cornerSize = spec.cornerSize ?? spec.columnSize;
+        const jambLimit = span / 2 - spec.frameInset - cornerSize / 2 - size / 2 - 0.02;
+        const leftJamb = Math.max(-jambLimit, left - jambOffset);
+        const rightJamb = Math.min(jambLimit, right + jambOffset);
         const headerY = top + size * 0.45;
 
         return (
@@ -594,52 +732,97 @@ function GarageStructure({ config }) {
   const girtLevel = wallHeightM * 0.52;
   const hasMidGirt = wallHeightM >= 3.05;
   const hasCollarTies = gable && runSpan >= 4.4 && rise >= 0.5;
-  const tieY = wallHeightM - 0.14 + rise * 0.55;
-  const tieHalf = runHalf * 0.45;
+  // Jetka konczy sie NA osi krokwi: liczymy jej zasieg z geometrii polaci
+  // (pelny bieg dachu), a nie z zawezonego rozstawu slupow.
+  const tieRun = Math.min((roofRun(config) / 2) * 0.45, runHalf - 0.15);
+  const tieY = roofYOnRun(tieRun, config, runSpan);
   const braceDrop = 0.42;
   const braceRun = 0.45;
+  // Slupy koncza sie na spodzie krokwi; oczepy i platwie sa wspawane miedzy
+  // krokwie z gornym licem zlicowanym z krokwia.
+  const rafterUnderY = (runCoord) => roofY(runCoord) - spec.rafterSize / 2;
+  const rafterMembers = rafterLongPositions.map((longCoord) => ({ coord: longCoord, size: spec.rafterSize }));
+  const ridgeSize = spec.rafterSize * 0.85;
+  const ridgeCenterY = roofY(0) - spec.rafterSize * 0.925;
+  const ridgeBottomY = ridgeCenterY - ridgeSize / 2;
+  const runWallMembers = (wall) => [
+    { coord: -longHalf, size: spec.cornerSize },
+    { coord: longHalf, size: spec.cornerSize },
+    ...interiorLongPositions
+      .filter((longCoord) => !blockingOpeningAt(config, wall, longCoord))
+      .map((longCoord) => ({ coord: longCoord, size: spec.postSize })),
+  ];
+  const longWallMembers = (wall) => [
+    { coord: -runHalf, size: spec.cornerSize },
+    { coord: runHalf, size: spec.cornerSize },
+    ...interiorRunPositions
+      .filter((runCoord) => !blockingOpeningAt(config, wall, runCoord))
+      .map((runCoord) => ({ coord: runCoord, size: spec.postSize })),
+  ];
 
   return (
     <group name={`garage-structure-${config.roof.type}`}>
       {runSides.map((runCoord) =>
         longSides.map((longCoord) => (
           <group key={`corner-${runCoord}-${longCoord}`}>
-            <Column position={pointFromAxes(runAxis, runCoord, longCoord, 0)} topY={roofY(runCoord)} size={spec.cornerSize} />
-            <JointBlock position={pointFromAxes(runAxis, runCoord, longCoord, roofY(runCoord))} size={spec.cornerSize * 0.55} />
+            <Column position={pointFromAxes(runAxis, runCoord, longCoord, 0)} topY={rafterUnderY(runCoord)} size={spec.cornerSize} />
+            <JointBlock position={pointFromAxes(runAxis, runCoord, longCoord, rafterUnderY(runCoord))} size={spec.cornerSize * 0.55} />
           </group>
         )),
       )}
 
       {runSides.map((runCoord) => {
         const wall = wallForRunSide(runAxis, runCoord);
-        return interiorLongPositions
-          .filter((longCoord) => !columnBlockedByOpening(config, wall, longCoord))
-          .map((longCoord) => (
+        return interiorLongPositions.map((longCoord) => {
+          const blocking = blockingOpeningAt(config, wall, longCoord);
+          return blocking ? (
+            <OverOpeningPost
+              key={`run-wall-post-${runCoord}-${longCoord}`}
+              position={pointFromAxes(runAxis, runCoord, longCoord, 0)}
+              fromY={openingHeaderY(blocking, spec)}
+              topY={rafterUnderY(runCoord)}
+              size={spec.postSize}
+            />
+          ) : (
             <Column
               key={`run-wall-post-${runCoord}-${longCoord}`}
               position={pointFromAxes(runAxis, runCoord, longCoord, 0)}
-              topY={roofY(runCoord)}
+              topY={rafterUnderY(runCoord)}
               size={spec.postSize}
             />
-          ));
+          );
+        });
       })}
 
       {longSides.map((longCoord) => {
         const wall = wallForLongSide(runAxis, longCoord);
-        return interiorRunPositions
-          .filter((runCoord) => !columnBlockedByOpening(config, wall, runCoord))
-          .map((runCoord) => (
+        return interiorRunPositions.map((runCoord) => {
+          const blocking = blockingOpeningAt(config, wall, runCoord);
+          // Slupek w osi kalenicy (dwuspad) konczy sie pod belka kalenicowa,
+          // pozostale pod krokwia sciany szczytowej.
+          const topY = gable && Math.abs(runCoord) < 0.05 ? ridgeBottomY : rafterUnderY(runCoord);
+          return blocking ? (
+            <OverOpeningPost
+              key={`long-wall-post-${longCoord}-${runCoord}`}
+              position={pointFromAxes(runAxis, runCoord, longCoord, 0)}
+              fromY={openingHeaderY(blocking, spec)}
+              topY={topY}
+              size={spec.postSize}
+            />
+          ) : (
             <Column
               key={`long-wall-post-${longCoord}-${runCoord}`}
               position={pointFromAxes(runAxis, runCoord, longCoord, 0)}
-              topY={roofY(runCoord)}
+              topY={topY}
               size={spec.postSize}
             />
-          ));
+          );
+        });
       })}
 
-      {runSides.map((runCoord) =>
-        splitAroundOpenings(-longHalf, longHalf, wallOpenings(config, wallForRunSide(runAxis, runCoord)), railLevel).map(([segmentStart, segmentEnd], index) => (
+      {runSides.map((runCoord) => {
+        const wall = wallForRunSide(runAxis, runCoord);
+        return railSegments(-longHalf, longHalf, wallOpenings(config, wall), railLevel, runWallMembers(wall)).map(([segmentStart, segmentEnd], index) => (
           <Beam
             key={`sill-rail-run-${runCoord}-${index}`}
             start={pointFromAxes(runAxis, runCoord, segmentStart, railLevel)}
@@ -647,10 +830,11 @@ function GarageStructure({ config }) {
             size={spec.railSize}
             material={materials.trim}
           />
-        )),
-      )}
-      {longSides.map((longCoord) =>
-        splitAroundOpenings(-runHalf, runHalf, wallOpenings(config, wallForLongSide(runAxis, longCoord)), railLevel).map(([segmentStart, segmentEnd], index) => (
+        ));
+      })}
+      {longSides.map((longCoord) => {
+        const wall = wallForLongSide(runAxis, longCoord);
+        return railSegments(-runHalf, runHalf, wallOpenings(config, wall), railLevel, longWallMembers(wall)).map(([segmentStart, segmentEnd], index) => (
           <Beam
             key={`sill-rail-long-${longCoord}-${index}`}
             start={pointFromAxes(runAxis, segmentStart, longCoord, railLevel)}
@@ -658,21 +842,26 @@ function GarageStructure({ config }) {
             size={spec.railSize}
             material={materials.trim}
           />
-        )),
-      )}
+        ));
+      })}
 
-      {runSides.map((runCoord) => (
-        <Beam
-          key={`top-rail-${runCoord}`}
-          start={pointFromAxes(runAxis, runCoord, -longHalf, roofY(runCoord))}
-          end={pointFromAxes(runAxis, runCoord, longHalf, roofY(runCoord))}
-          size={spec.railSize}
-        />
-      ))}
+      {runSides.map((runCoord) => {
+        // Oczep wspawany miedzy krokwie, gorne lico zlicowane z krokwiami.
+        const railY = roofY(runCoord) + spec.rafterSize / 2 - spec.railSize / 2;
+        return splitAtMembers(-longHalf, longHalf, rafterMembers).map(([a, b], index) => (
+          <Beam
+            key={`top-rail-${runCoord}-${index}`}
+            start={pointFromAxes(runAxis, runCoord, a, railY)}
+            end={pointFromAxes(runAxis, runCoord, b, railY)}
+            size={spec.railSize}
+          />
+        ));
+      })}
 
       {hasMidGirt &&
-        runSides.map((runCoord) =>
-          splitAroundOpenings(-longHalf, longHalf, wallOpenings(config, wallForRunSide(runAxis, runCoord)), girtLevel).map(([segmentStart, segmentEnd], index) => (
+        runSides.map((runCoord) => {
+          const wall = wallForRunSide(runAxis, runCoord);
+          return railSegments(-longHalf, longHalf, wallOpenings(config, wall), girtLevel, runWallMembers(wall)).map(([segmentStart, segmentEnd], index) => (
             <Beam
               key={`mid-girt-run-${runCoord}-${index}`}
               start={pointFromAxes(runAxis, runCoord, segmentStart, girtLevel)}
@@ -680,11 +869,12 @@ function GarageStructure({ config }) {
               size={spec.railSize * 0.75}
               material={materials.trim}
             />
-          )),
-        )}
+          ));
+        })}
       {hasMidGirt &&
-        longSides.map((longCoord) =>
-          splitAroundOpenings(-runHalf, runHalf, wallOpenings(config, wallForLongSide(runAxis, longCoord)), girtLevel).map(([segmentStart, segmentEnd], index) => (
+        longSides.map((longCoord) => {
+          const wall = wallForLongSide(runAxis, longCoord);
+          return railSegments(-runHalf, runHalf, wallOpenings(config, wall), girtLevel, longWallMembers(wall)).map(([segmentStart, segmentEnd], index) => (
             <Beam
               key={`mid-girt-long-${longCoord}-${index}`}
               start={pointFromAxes(runAxis, segmentStart, longCoord, girtLevel)}
@@ -692,8 +882,8 @@ function GarageStructure({ config }) {
               size={spec.railSize * 0.75}
               material={materials.trim}
             />
-          )),
-        )}
+          ));
+        })}
 
       {rafterLongPositions.map((longCoord) =>
         gable ? (
@@ -701,10 +891,10 @@ function GarageStructure({ config }) {
             <Beam start={pointFromAxes(runAxis, -runHalf, longCoord, roofY(-runHalf))} end={pointFromAxes(runAxis, 0, longCoord, roofY(0))} size={spec.rafterSize} />
             <Beam start={pointFromAxes(runAxis, 0, longCoord, roofY(0))} end={pointFromAxes(runAxis, runHalf, longCoord, roofY(runHalf))} size={spec.rafterSize} />
             <JointBlock position={pointFromAxes(runAxis, 0, longCoord, roofY(0))} size={spec.rafterSize * 0.6} />
-            {hasCollarTies && (
+            {hasCollarTies && Math.abs(Math.abs(longCoord) - longHalf) > 0.05 && (
               <Beam
-                start={pointFromAxes(runAxis, -tieHalf, longCoord, tieY)}
-                end={pointFromAxes(runAxis, tieHalf, longCoord, tieY)}
+                start={pointFromAxes(runAxis, -tieRun, longCoord, tieY)}
+                end={pointFromAxes(runAxis, tieRun, longCoord, tieY)}
                 size={spec.rafterSize * 0.7}
                 material={materials.trim}
               />
@@ -722,21 +912,25 @@ function GarageStructure({ config }) {
 
       {gable && (
         <Beam
-          start={pointFromAxes(runAxis, 0, -longHalf, roofY(0) - spec.rafterSize * 0.75)}
-          end={pointFromAxes(runAxis, 0, longHalf, roofY(0) - spec.rafterSize * 0.75)}
-          size={spec.rafterSize * 0.85}
+          start={pointFromAxes(runAxis, 0, -longHalf, ridgeCenterY)}
+          end={pointFromAxes(runAxis, 0, longHalf, ridgeCenterY)}
+          size={ridgeSize}
         />
       )}
 
-      {purlinRunPositions.map((runCoord) => (
-        <Beam
-          key={`purlin-${runCoord}`}
-          start={pointFromAxes(runAxis, runCoord, -longHalf, roofY(runCoord))}
-          end={pointFromAxes(runAxis, runCoord, longHalf, roofY(runCoord))}
-          size={spec.purlinSize}
-          material={materials.trim}
-        />
-      ))}
+      {purlinRunPositions.map((runCoord) => {
+        // Platew wspawana miedzy krokwie, zlicowana gora z krokwiami.
+        const purlinY = roofY(runCoord) + spec.rafterSize / 2 - spec.purlinSize / 2;
+        return splitAtMembers(-longHalf, longHalf, rafterMembers).map(([a, b], index) => (
+          <Beam
+            key={`purlin-${runCoord}-${index}`}
+            start={pointFromAxes(runAxis, runCoord, a, purlinY)}
+            end={pointFromAxes(runAxis, runCoord, b, purlinY)}
+            size={spec.purlinSize}
+            material={materials.trim}
+          />
+        ));
+      })}
 
       {runSides.map((runCoord) => {
         const wall = wallForRunSide(runAxis, runCoord);
@@ -808,8 +1002,8 @@ export function StructureSystem({ config }) {
 
       <EndWallFrame config={config} runAxis={runAxis} runSpan={runSpan} longCoord={-longSpan / 2} spec={spec} />
       <EndWallFrame config={config} runAxis={runAxis} runSpan={runSpan} longCoord={longSpan / 2} spec={spec} />
-      <RoofSecondary config={config} runAxis={runAxis} runSpan={runSpan} longSpan={longSpan} spec={spec} />
-      <WallSecondary config={config} runAxis={runAxis} runSpan={runSpan} longSpan={longSpan} spec={spec} />
+      <RoofSecondary config={config} runAxis={runAxis} runSpan={runSpan} longSpan={longSpan} framePositions={framePositions} spec={spec} />
+      <WallSecondary config={config} runAxis={runAxis} runSpan={runSpan} longSpan={longSpan} framePositions={framePositions} spec={spec} />
       <VerticalBracing config={config} runAxis={runAxis} runSpan={runSpan} longSpan={longSpan} framePositions={framePositions} spec={spec} />
       <OpeningFrames config={config} spec={spec} />
     </group>

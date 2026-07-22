@@ -1,0 +1,10 @@
+<svg viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Brama z V-przetłoczeniami">
+  <rect width="300" height="200" rx="10" fill="#3f474f"/>
+  <g stroke="#9aa2a8" stroke-width="2" opacity=".76">
+    <path d="M18 0l7 200M34 0l7 200M50 0l7 200M66 0l7 200M82 0l7 200M98 0l7 200M114 0l7 200M130 0l7 200M146 0l7 200M162 0l7 200M178 0l7 200M194 0l7 200M210 0l7 200M226 0l7 200M242 0l7 200M258 0l7 200M274 0l7 200"/>
+  </g>
+  <g stroke="#1b2024" stroke-width="1.2" opacity=".85">
+    <path d="M25 0l7 200M41 0l7 200M57 0l7 200M73 0l7 200M89 0l7 200M105 0l7 200M121 0l7 200M137 0l7 200M153 0l7 200M169 0l7 200M185 0l7 200M201 0l7 200M217 0l7 200M233 0l7 200M249 0l7 200M265 0l7 200"/>
+  </g>
+  <path d="M0 50h300M0 100h300M0 150h300" stroke="#171c20" stroke-width="3"/>
+</svg>

@@ -1,119 +1,584 @@
-import { MeshPhysicalMaterial, MeshStandardMaterial } from "three";
+import {
+  DataTexture,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  MeshPhysicalMaterial,
+  MeshStandardMaterial,
+  NoColorSpace,
+  RepeatWrapping,
+  SRGBColorSpace,
+  Vector2,
+} from "three";
+
+/**
+ * @typedef {"wall" | "roof" | "flashing" | "gate"} PaintedMetalRole
+ * @typedef {{
+ *   color: string,
+ *   roughness: number,
+ *   metalness: number,
+ *   roughnessMap?: import("three").Texture,
+ *   normalMap?: import("three").Texture,
+ *   normalScale?: Vector2,
+ *   envMapIntensity?: number,
+ *   clearcoat?: number,
+ *   clearcoatRoughness?: number,
+ * }} MaterialPreset
+ */
+
+const textureRegistry = [];
+const paintedMaterialCache = new Map();
+const gateMaterialCache = new Map();
+const glassMaterialCache = new Map();
+
+function hashNoise(x, y, seed = 0) {
+  const value = Math.sin(x * 12.9898 + y * 78.233 + seed * 37.719) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function makeTexture(data, size, { color = false, repeat = [1, 1] } = {}) {
+  const texture = new DataTexture(data, size, size);
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
+  texture.repeat.set(...repeat);
+  texture.colorSpace = color ? SRGBColorSpace : NoColorSpace;
+  texture.minFilter = LinearMipmapLinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  textureRegistry.push(texture);
+  return texture;
+}
+
+function createMetalSurfaceMaps(size = 128) {
+  const roughness = new Uint8Array(size * size * 4);
+  const normal = new Uint8Array(size * size * 4);
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const index = (y * size + x) * 4;
+      const broad = hashNoise(Math.floor(x / 7), Math.floor(y / 5), 2);
+      const fine = hashNoise(x, y, 9);
+      const rolled = Math.sin((x / size) * Math.PI * 18) * 0.5 + 0.5;
+      const rough = Math.round(196 + (broad - 0.5) * 20 + (fine - 0.5) * 7);
+
+      roughness[index] = rough;
+      roughness[index + 1] = rough;
+      roughness[index + 2] = rough;
+      roughness[index + 3] = 255;
+
+      normal[index] = Math.round(128 + (rolled - 0.5) * 7 + (fine - 0.5) * 3);
+      normal[index + 1] = Math.round(128 + (broad - 0.5) * 4);
+      normal[index + 2] = 255;
+      normal[index + 3] = 255;
+    }
+  }
+
+  return {
+    roughnessMap: makeTexture(roughness, size, { repeat: [4, 4] }),
+    normalMap: makeTexture(normal, size, { repeat: [4, 4] }),
+  };
+}
+
+function createConcreteSurfaceMaps(size = 256, pavers = false) {
+  const color = new Uint8Array(size * size * 4);
+  const roughness = new Uint8Array(size * size * 4);
+  const height = new Float32Array(size * size);
+  const normal = new Uint8Array(size * size * 4);
+  const brickW = 40;
+  const brickH = 20;
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const pixel = y * size + x;
+      const index = pixel * 4;
+      const largeNoise = hashNoise(Math.floor(x / 9), Math.floor(y / 9), pavers ? 3 : 5);
+      const grain = hashNoise(x, y, pavers ? 11 : 13);
+      const row = Math.floor(y / brickH);
+      const shiftedX = x + (row % 2) * (brickW / 2);
+      const mortar = pavers && (
+        shiftedX % brickW < 1.4 ||
+        y % brickH < 1.4
+      );
+      const base = pavers ? 151 : 174;
+      const shade = base + (largeNoise - 0.5) * 18 + (grain - 0.5) * 7 - (mortar ? 30 : 0);
+
+      color[index] = Math.max(0, Math.min(255, Math.round(shade * 0.98)));
+      color[index + 1] = Math.max(0, Math.min(255, Math.round(shade)));
+      color[index + 2] = Math.max(0, Math.min(255, Math.round(shade * 1.01)));
+      color[index + 3] = 255;
+
+      const rough = Math.round((pavers ? 222 : 216) + (grain - 0.5) * 24 + (mortar ? 18 : 0));
+      roughness[index] = rough;
+      roughness[index + 1] = rough;
+      roughness[index + 2] = rough;
+      roughness[index + 3] = 255;
+      height[pixel] = (largeNoise - 0.5) * 0.25 + (grain - 0.5) * 0.08 - (mortar ? 0.7 : 0);
+    }
+  }
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const index = (y * size + x) * 4;
+      const left = height[y * size + ((x - 1 + size) % size)];
+      const right = height[y * size + ((x + 1) % size)];
+      const down = height[((y - 1 + size) % size) * size + x];
+      const up = height[((y + 1) % size) * size + x];
+      const dx = (right - left) * 0.7;
+      const dy = (up - down) * 0.7;
+      const length = Math.hypot(dx, dy, 1);
+
+      normal[index] = Math.round(((-dx / length) * 0.5 + 0.5) * 255);
+      normal[index + 1] = Math.round(((-dy / length) * 0.5 + 0.5) * 255);
+      normal[index + 2] = Math.round(((1 / length) * 0.5 + 0.5) * 255);
+      normal[index + 3] = 255;
+    }
+  }
+
+  const repeat = pavers ? [72, 72] : [3, 3];
+  return {
+    map: makeTexture(color, size, { color: true, repeat }),
+    roughnessMap: makeTexture(roughness, size, { repeat }),
+    normalMap: makeTexture(normal, size, { repeat }),
+  };
+}
+
+function createGateStructureMaps(structure, size = 128) {
+  const color = new Uint8Array(size * size * 4);
+  const roughness = new Uint8Array(size * size * 4);
+  const normal = new Uint8Array(size * size * 4);
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const index = (y * size + x) * 4;
+      const fine = hashNoise(x, y, structure.length);
+      const broad = hashNoise(Math.floor(x / 8), Math.floor(y / 8), structure.length + 5);
+      const grainWave = Math.sin(y * 0.33 + Math.sin(x * 0.12) * 2.8 + broad * 4.2);
+      const wood = structure === "woodgrain";
+      const sand = structure === "sandgrain";
+      const smooth = structure === "smoothgrain";
+      const baseColor = wood ? 220 + grainWave * 12 + (broad - 0.5) * 16 : 244 + (broad - 0.5) * 5;
+      const baseRoughness = wood ? 184 : sand ? 166 : smooth ? 126 : 108;
+      const roughVariation = wood
+        ? grainWave * 12 + (fine - 0.5) * 10
+        : sand
+          ? (fine - 0.5) * 42
+          : (fine - 0.5) * (smooth ? 10 : 5);
+      const nx = wood
+        ? grainWave * 11 + (fine - 0.5) * 5
+        : sand
+          ? (fine - 0.5) * 20
+          : (fine - 0.5) * (smooth ? 4 : 2);
+      const ny = wood
+        ? (broad - 0.5) * 8
+        : sand
+          ? (broad - 0.5) * 16
+          : (broad - 0.5) * 3;
+
+      const tone = Math.max(0, Math.min(255, Math.round(baseColor)));
+      color[index] = tone;
+      color[index + 1] = tone;
+      color[index + 2] = tone;
+      color[index + 3] = 255;
+
+      const rough = Math.max(0, Math.min(255, Math.round(baseRoughness + roughVariation)));
+      roughness[index] = rough;
+      roughness[index + 1] = rough;
+      roughness[index + 2] = rough;
+      roughness[index + 3] = 255;
+
+      normal[index] = Math.max(0, Math.min(255, Math.round(128 + nx)));
+      normal[index + 1] = Math.max(0, Math.min(255, Math.round(128 + ny)));
+      normal[index + 2] = 255;
+      normal[index + 3] = 255;
+    }
+  }
+
+  const repeat = structure === "woodgrain" ? [1.4, 4.2] : structure === "sandgrain" ? [5, 5] : [2.5, 2.5];
+  return {
+    map: makeTexture(color, size, { color: true, repeat }),
+    roughnessMap: makeTexture(roughness, size, { repeat }),
+    normalMap: makeTexture(normal, size, { repeat }),
+  };
+}
+
+const metalMaps = createMetalSurfaceMaps();
+const concreteMaps = createConcreteSurfaceMaps();
+const pavingMaps = createConcreteSurfaceMaps(256, true);
+const gateStructureMaps = Object.freeze({
+  woodgrain: createGateStructureMaps("woodgrain"),
+  smoothgrain: createGateStructureMaps("smoothgrain"),
+  sandgrain: createGateStructureMaps("sandgrain"),
+  silkline: createGateStructureMaps("silkline"),
+});
+
+const paintedMetalProfiles = Object.freeze({
+  wall: {
+    roughness: 0.46,
+    metalness: 0.08,
+    clearcoat: 0.08,
+    clearcoatRoughness: 0.62,
+    envMapIntensity: 0.95,
+    normalScale: new Vector2(0.22, 0.22),
+  },
+  roof: {
+    roughness: 0.42,
+    metalness: 0.1,
+    clearcoat: 0.1,
+    clearcoatRoughness: 0.56,
+    envMapIntensity: 1.08,
+    normalScale: new Vector2(0.26, 0.26),
+  },
+  flashing: {
+    roughness: 0.36,
+    metalness: 0.12,
+    clearcoat: 0.14,
+    clearcoatRoughness: 0.48,
+    envMapIntensity: 1.12,
+    normalScale: new Vector2(0.16, 0.16),
+  },
+  gate: {
+    roughness: 0.48,
+    metalness: 0.08,
+    clearcoat: 0.1,
+    clearcoatRoughness: 0.58,
+    envMapIntensity: 0.98,
+    normalScale: new Vector2(0.2, 0.2),
+  },
+});
+
+/** @returns {MaterialPreset} */
+export function paintedMetalProps(color, role = "wall") {
+  const profile = paintedMetalProfiles[role] || paintedMetalProfiles.wall;
+  return {
+    color,
+    ...profile,
+    roughnessMap: metalMaps.roughnessMap,
+    normalMap: metalMaps.normalMap,
+  };
+}
+
+export function getPaintedMetalMaterial(color, role = "wall", overrides = {}) {
+  const key = `${role}:${color}:${JSON.stringify(overrides)}`;
+  if (!paintedMaterialCache.has(key)) {
+    paintedMaterialCache.set(
+      key,
+      new MeshPhysicalMaterial({
+        ...paintedMetalProps(color, role),
+        ...overrides,
+      }),
+    );
+  }
+  return paintedMaterialCache.get(key);
+}
+
+export function getWoodGateMaterial(color) {
+  return getGateSurfaceMaterial(color, "woodgrain");
+}
+
+export function getGateSurfaceMaterial(color, structure = "silkline") {
+  const normalizedStructure = gateStructureMaps[structure] ? structure : "silkline";
+  const key = `${normalizedStructure}:${color}`;
+  if (!gateMaterialCache.has(key)) {
+    const maps = gateStructureMaps[normalizedStructure];
+    const profile = {
+      woodgrain: {
+        roughness: 0.64,
+        metalness: 0.025,
+        clearcoat: 0.035,
+        clearcoatRoughness: 0.74,
+        envMapIntensity: 0.82,
+        normalScale: new Vector2(0.32, 0.32),
+      },
+      smoothgrain: {
+        roughness: 0.43,
+        metalness: 0.045,
+        clearcoat: 0.09,
+        clearcoatRoughness: 0.58,
+        envMapIntensity: 0.96,
+        normalScale: new Vector2(0.11, 0.11),
+      },
+      sandgrain: {
+        roughness: 0.57,
+        metalness: 0.035,
+        clearcoat: 0.035,
+        clearcoatRoughness: 0.76,
+        envMapIntensity: 0.82,
+        normalScale: new Vector2(0.28, 0.28),
+      },
+      silkline: {
+        roughness: 0.34,
+        metalness: 0.07,
+        clearcoat: 0.14,
+        clearcoatRoughness: 0.46,
+        envMapIntensity: 1.05,
+        normalScale: new Vector2(0.045, 0.045),
+      },
+    }[normalizedStructure];
+
+    gateMaterialCache.set(
+      key,
+      new MeshPhysicalMaterial({
+        color,
+        ...profile,
+        ...maps,
+      }),
+    );
+  }
+  return gateMaterialCache.get(key);
+}
+
+export function getGlassMaterial({ tint, roughness, transmission }) {
+  const key = `${tint}:${roughness}:${transmission}`;
+  if (!glassMaterialCache.has(key)) {
+    glassMaterialCache.set(
+      key,
+      new MeshPhysicalMaterial({
+        color: tint,
+        roughness,
+        metalness: 0,
+        transmission,
+        thickness: 0.022,
+        ior: 1.52,
+        transparent: true,
+        opacity: Math.min(0.9, 0.44 + transmission * 0.5),
+        envMapIntensity: 1.38,
+        attenuationColor: tint,
+        attenuationDistance: 1.6,
+        depthWrite: false,
+      }),
+    );
+  }
+  return glassMaterialCache.get(key);
+}
+
+export function setSceneTextureAnisotropy(value) {
+  textureRegistry.forEach((texture) => {
+    texture.anisotropy = value;
+    texture.needsUpdate = true;
+  });
+}
+
+const standardMaterialKeys = [
+  "color",
+  "roughness",
+  "metalness",
+  "map",
+  "roughnessMap",
+  "normalMap",
+  "normalScale",
+  "envMapIntensity",
+  "transparent",
+  "opacity",
+  "alphaTest",
+  "side",
+  "depthWrite",
+];
+
+const physicalMaterialKeys = [
+  ...standardMaterialKeys,
+  "clearcoat",
+  "clearcoatRoughness",
+  "transmission",
+  "thickness",
+  "ior",
+  "attenuationColor",
+  "attenuationDistance",
+];
+
+export function materialProps(material, clippingPlanes, physical = true) {
+  const props = {};
+  const keys = physical ? physicalMaterialKeys : standardMaterialKeys;
+  keys.forEach((key) => {
+    if (material?.[key] !== undefined && material?.[key] !== null) {
+      props[key] = material[key];
+    }
+  });
+  props.clippingPlanes = clippingPlanes
+    ? (Array.isArray(clippingPlanes) ? clippingPlanes : [clippingPlanes])
+    : [];
+  props.clipShadows = true;
+  return props;
+}
 
 export const materials = {
-  wall: new MeshStandardMaterial({
-    color: "#d6dde1",
-    roughness: 0.62,
-    metalness: 0.15,
-  }),
+  wall: getPaintedMetalMaterial("#d6dde1", "wall"),
   wallCore: new MeshStandardMaterial({
-    color: "#c4ccd1",
-    roughness: 0.78,
-    metalness: 0.05,
+    color: "#d7dce0",
+    roughness: 0.82,
+    metalness: 0.01,
+    envMapIntensity: 0.45,
   }),
   wallStructureMode: new MeshStandardMaterial({
     color: "#d6dde1",
-    roughness: 0.7,
-    metalness: 0.1,
-    transparent: true,
-    opacity: 0.18,
-  }),
-  roof: new MeshStandardMaterial({
-    color: "#7c8790",
-    roughness: 0.54,
-    metalness: 0.28,
-  }),
-  roofCore: new MeshStandardMaterial({
-    color: "#b7c0c6",
     roughness: 0.72,
-    metalness: 0.08,
+    metalness: 0.04,
+    transparent: true,
+    opacity: 0.16,
+    depthWrite: false,
+  }),
+  roof: getPaintedMetalMaterial("#7c8790", "roof"),
+  roofCore: new MeshStandardMaterial({
+    color: "#c7cdd1",
+    roughness: 0.78,
+    metalness: 0.01,
+    envMapIntensity: 0.4,
   }),
   roofStructureMode: new MeshStandardMaterial({
     color: "#7c8790",
-    roughness: 0.6,
-    metalness: 0.22,
+    roughness: 0.64,
+    metalness: 0.06,
     transparent: true,
-    opacity: 0.28,
+    opacity: 0.25,
+    depthWrite: false,
   }),
   steel: new MeshStandardMaterial({
-    color: "#2f3d48",
-    roughness: 0.42,
-    metalness: 0.72,
+    color: "#3a4650",
+    roughness: 0.44,
+    metalness: 0.48,
+    envMapIntensity: 0.9,
   }),
   trim: new MeshStandardMaterial({
-    color: "#1f2933",
-    roughness: 0.5,
-    metalness: 0.55,
+    color: "#28333d",
+    roughness: 0.46,
+    metalness: 0.34,
+    envMapIntensity: 0.92,
   }),
   dimension: new MeshStandardMaterial({
     color: "#059669",
-    roughness: 0.35,
-    metalness: 0.15,
+    roughness: 0.38,
+    metalness: 0.08,
+    envMapIntensity: 0.75,
   }),
-  gate: new MeshStandardMaterial({
-    color: "#383d42",
-    roughness: 0.62,
-    metalness: 0.2,
-  }),
+  gate: getPaintedMetalMaterial("#383d42", "gate"),
   track: new MeshStandardMaterial({
-    color: "#9aa3ab",
-    roughness: 0.42,
-    metalness: 0.85,
+    color: "#aab2b8",
+    roughness: 0.32,
+    metalness: 0.82,
+    envMapIntensity: 1.2,
   }),
   roller: new MeshStandardMaterial({
-    color: "#1d2228",
-    roughness: 0.55,
-    metalness: 0.3,
+    color: "#242a30",
+    roughness: 0.54,
+    metalness: 0.24,
+    envMapIntensity: 0.8,
   }),
   gateBox: new MeshStandardMaterial({
-    color: "#b6bcc1",
-    roughness: 0.4,
-    metalness: 0.78,
+    color: "#b8bec3",
+    roughness: 0.34,
+    metalness: 0.66,
+    envMapIntensity: 1.08,
   }),
   gateSeal: new MeshStandardMaterial({
-    color: "#0e1216",
-    roughness: 0.85,
-    metalness: 0.05,
-  }),
-  glass: new MeshPhysicalMaterial({
-    color: "#9fc5d6",
-    roughness: 0.12,
-    metalness: 0,
-    transmission: 0.25,
-    thickness: 0.05,
-    transparent: true,
-    opacity: 0.55,
-  }),
-  darkVoid: new MeshStandardMaterial({
-    color: "#151a1f",
-    roughness: 0.8,
-    metalness: 0.1,
-  }),
-  concrete: new MeshStandardMaterial({
-    color: "#aeb3b6",
-    roughness: 0.86,
+    color: "#111519",
+    roughness: 0.9,
     metalness: 0,
   }),
-  concreteSide: new MeshStandardMaterial({
-    color: "#8d9295",
+  rubberSeal: new MeshStandardMaterial({
+    color: "#15191c",
     roughness: 0.92,
     metalness: 0,
   }),
+  gasket: new MeshStandardMaterial({
+    color: "#202427",
+    roughness: 0.96,
+    metalness: 0,
+  }),
+  handle: new MeshStandardMaterial({
+    color: "#c1c7cb",
+    roughness: 0.22,
+    metalness: 0.88,
+    envMapIntensity: 1.34,
+  }),
+  stainlessSteel: new MeshStandardMaterial({
+    color: "#cbd1d5",
+    roughness: 0.2,
+    metalness: 0.92,
+    envMapIntensity: 1.42,
+  }),
+  galvanized: new MeshStandardMaterial({
+    color: "#9ca8af",
+    roughness: 0.42,
+    metalness: 0.74,
+    envMapIntensity: 1.08,
+  }),
+  hardwarePlastic: new MeshStandardMaterial({
+    color: "#262b2f",
+    roughness: 0.58,
+    metalness: 0.04,
+    envMapIntensity: 0.66,
+  }),
+  glazingSpacer: new MeshStandardMaterial({
+    color: "#3d4144",
+    roughness: 0.48,
+    metalness: 0.42,
+    envMapIntensity: 0.8,
+  }),
+  hinge: new MeshStandardMaterial({
+    color: "#7d878e",
+    roughness: 0.34,
+    metalness: 0.78,
+    envMapIntensity: 1.1,
+  }),
+  glass: new MeshPhysicalMaterial({
+    color: "#c8e3eb",
+    roughness: 0.08,
+    metalness: 0,
+    transmission: 0.82,
+    thickness: 0.018,
+    ior: 1.5,
+    transparent: true,
+    opacity: 0.72,
+    envMapIntensity: 1.3,
+    attenuationColor: "#dceff4",
+    attenuationDistance: 1.8,
+    depthWrite: false,
+  }),
+  darkVoid: new MeshStandardMaterial({
+    color: "#1b2024",
+    roughness: 0.88,
+    metalness: 0.02,
+    envMapIntensity: 0.35,
+  }),
+  concrete: new MeshStandardMaterial({
+    color: "#ffffff",
+    map: concreteMaps.map,
+    roughness: 0.9,
+    roughnessMap: concreteMaps.roughnessMap,
+    normalMap: concreteMaps.normalMap,
+    normalScale: new Vector2(0.2, 0.2),
+    metalness: 0,
+    envMapIntensity: 0.4,
+  }),
+  concreteSide: new MeshStandardMaterial({
+    color: "#9ca1a4",
+    roughness: 0.94,
+    roughnessMap: concreteMaps.roughnessMap,
+    normalMap: concreteMaps.normalMap,
+    normalScale: new Vector2(0.16, 0.16),
+    metalness: 0,
+    envMapIntensity: 0.3,
+  }),
   concreteJoint: new MeshStandardMaterial({
-    color: "#6f7477",
-    roughness: 0.95,
+    color: "#62686b",
+    roughness: 0.98,
     metalness: 0,
   }),
   concreteStain: new MeshStandardMaterial({
-    color: "#c4c8ca",
+    color: "#8d9295",
     roughness: 1,
     metalness: 0,
     transparent: true,
-    opacity: 0.28,
+    opacity: 0.1,
+    depthWrite: false,
   }),
   siteGround: new MeshStandardMaterial({
-    color: "#8f9991",
-    roughness: 1,
+    color: "#ffffff",
+    map: pavingMaps.map,
+    roughness: 0.96,
+    roughnessMap: pavingMaps.roughnessMap,
+    normalMap: pavingMaps.normalMap,
+    normalScale: new Vector2(0.38, 0.38),
     metalness: 0,
+    envMapIntensity: 0.28,
   }),
 };

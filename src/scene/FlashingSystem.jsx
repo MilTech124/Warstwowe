@@ -1,6 +1,6 @@
 import { FLASHING_COLORS, getRoofCladdingColor } from "@/config/catalog";
 import { roofFootprint, roofMetrics, slopedRoofLength, wallTopHeightAt } from "@/scene/geometry";
-import { materials } from "@/scene/materials";
+import { paintedMetalProps } from "@/scene/materials";
 
 const SHEET_THICKNESS = 0.012;
 const ROOF_EDGE_FLASHING_Y = 0.07;
@@ -10,18 +10,14 @@ function flashingMaterial(config) {
     ? getRoofCladdingColor(config.cladding).hex
     : FLASHING_COLORS[config.flashings.color]?.hex || getRoofCladdingColor(config.cladding).hex;
 
-  return {
-    color,
-    roughness: 0.46,
-    metalness: 0.48,
-  };
+  return paintedMetalProps(color, "flashing");
 }
 
 function Sheet({ name, position, rotation = [0, 0, 0], args, material }) {
   return (
     <mesh name={name} position={position} rotation={rotation} castShadow receiveShadow>
       <boxGeometry args={args} />
-      <meshStandardMaterial {...material} />
+      <meshPhysicalMaterial {...material} />
     </mesh>
   );
 }
@@ -277,7 +273,9 @@ export function FlashingSystem({ config }) {
   }
 
   const material = flashingMaterial(config);
-  const edgeWidth = config.flashings.package === "premium" ? 0.18 : 0.13;
+  // Smuklejsze obrobki krawedzi dachu (okap, wiatrownice, kalenica skaluja sie
+  // z edgeWidth, wiec zmniejszamy je proporcjonalnie i spojnie).
+  const edgeWidth = config.flashings.package === "premium" ? 0.14 : 0.10;
   const panelBasedLeg = config.cladding.wallPirThicknessMm / 1000 + 0.06;
   const cornerWidth = config.flashings.package === "premium"
     ? Math.max(0.18, panelBasedLeg + 0.04)

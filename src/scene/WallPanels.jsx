@@ -1,26 +1,15 @@
 import { Clone, useGLTF } from "@react-three/drei";
 import { Color, Plane, Vector3 } from "three";
 import { getCladdingColor, getCladdingProfile, getWallPanelLengthM, WALL_PANEL_DIMENSIONS, WALL_PROFILES } from "@/config/catalog";
-import { materials } from "@/scene/materials";
+import { materialProps, materials, paintedMetalProps } from "@/scene/materials";
 import { wallTopHeightAt } from "@/scene/geometry";
+import { GATE_OPENING_CLEARANCE_M } from "@/scene/openings/gateGeometry";
 
 const ROOF_CLEARANCE_M = 0.035;
 const HORIZONTAL_PANEL_HEIGHT_M = WALL_PANEL_DIMENSIONS.moduleWidthM;
 const JOINT_FLASHING_WIDTH_M = 0.12;
 const JOINT_FLASHING_DEPTH_M = 0.008;
 const JOINT_FLASHING_OFFSET_M = JOINT_FLASHING_DEPTH_M / 2 + 0.001;
-
-function materialProps(material, clippingPlane) {
-  return {
-    clippingPlanes: clippingPlane ? (Array.isArray(clippingPlane) ? clippingPlane : [clippingPlane]) : [],
-    clipShadows: true,
-    color: material.color,
-    metalness: material.metalness,
-    opacity: material.opacity,
-    roughness: material.roughness,
-    transparent: material.transparent,
-  };
-}
 
 function PanelInstance({ scene, position, rotation, scale, material, clippingPlane }) {
   return (
@@ -29,7 +18,7 @@ function PanelInstance({ scene, position, rotation, scale, material, clippingPla
       position={position}
       rotation={rotation}
       scale={scale}
-      inject={<meshStandardMaterial {...materialProps(material, clippingPlane)} />}
+      inject={<meshPhysicalMaterial {...materialProps(material, clippingPlane)} />}
     />
   );
 }
@@ -108,11 +97,12 @@ function wallOpeningRects(config, side) {
     .filter((opening) => opening.wall === side)
     .map((opening) => {
       const center = sign * opening.offsetM;
+      const trimClearance = opening.kind === "gate" ? GATE_OPENING_CLEARANCE_M : opening.kind === "door" ? 0.026 : opening.kind === "window" ? 0.042 : 0;
       return {
-        x0: center - opening.widthM / 2,
-        x1: center + opening.widthM / 2,
-        y0: opening.sillM,
-        y1: opening.sillM + opening.heightM,
+        x0: center - opening.widthM / 2 - trimClearance,
+        x1: center + opening.widthM / 2 + trimClearance,
+        y0: Math.max(0, opening.sillM - trimClearance),
+        y1: opening.sillM + opening.heightM + trimClearance,
       };
     });
 }
@@ -178,6 +168,15 @@ function horizontalPanelCutPlanes(side, config, start, end) {
   return [wallCutPlane(side, config, start, end)];
 }
 
+// Pozioma plaszczyzna tnaca: keepAbove=true zostawia y >= yValue (docina dol),
+// keepAbove=false zostawia y <= yValue (docina gore). Pozwala przyciac modul
+// okladziny do granic kawalka wokol otworu bez zmiany skoku przetloczen.
+function horizontalClipPlane(keepAbove, yValue) {
+  const normal = new Vector3(0, keepAbove ? 1 : -1, 0);
+  const constant = keepAbove ? -yValue : yValue;
+  return new Plane(normal, constant);
+}
+
 function wallMaxHeight(side, config, start, end) {
   const length = wallAxisLength(side, config);
   const a0 = start ?? -length / 2;
@@ -225,7 +224,7 @@ function WallCoreRun({ length, side, config }) {
       return (
         <mesh key={`${side}-core-${index}-${pieceIndex}`} name={`${side}-wall-core-segment`} position={box.position} castShadow receiveShadow>
           <boxGeometry args={box.args} />
-          <meshStandardMaterial {...materialProps(mat, clippingPlane)} />
+          <meshStandardMaterial {...materialProps(mat, clippingPlane, false)} />
         </mesh>
       );
     });
@@ -265,11 +264,7 @@ function HorizontalPanelRun({ scene, length, side, config }) {
   const color = getCladdingColor(config.cladding);
   const material = config.viewMode === "structure"
     ? materials.wallStructureMode
-    : {
-      color: color.hex,
-      metalness: materials.wall.metalness,
-      roughness: materials.wall.roughness,
-    };
+    : paintedMetalProps(color.hex, "wall");
   return panels.flatMap((panel, panelIndex) => {
     const clippingPlanes = horizontalPanelCutPlanes(side, config, panel.start, panel.end);
     const panelHeight = wallMaxHeight(side, config, panel.start, panel.end);
@@ -280,8 +275,14 @@ function HorizontalPanelRun({ scene, length, side, config }) {
       const rowEnd = Math.min(panelHeight, rowStart + HORIZONTAL_PANEL_HEIGHT_M);
 
       return piecesAroundOpenings(panel.start, panel.end, rowStart, rowEnd, openingRects).map((piece, pieceIndex) => {
-        const pieceHeight = Math.max(0.001, piece.y1 - piece.y0);
-        const transform = panelTransform(side, piece.x0, (piece.y0 + piece.y1) / 2, config);
+        // Modul renderujemy zawsze w natywnej skali (stala wysokosc pasa =
+        // staly skok przetloczen). Do granic kawalka wokol otworu docinamy go
+        // plaszczyznami, a nie sciskajac skala — inaczej pasek nad brama mial
+        // inne (gestsze) przetloczenia niz reszta sciany.
+        const transform = panelTransform(side, piece.x0, rowStart + HORIZONTAL_PANEL_HEIGHT_M / 2, config);
+        const pieceClips = [...clippingPlanes];
+        if (piece.y0 > rowStart + 0.01) pieceClips.push(horizontalClipPlane(true, piece.y0));
+        if (piece.y1 < rowEnd - 0.01) pieceClips.push(horizontalClipPlane(false, piece.y1));
 
         return (
           <PanelInstance
@@ -289,9 +290,9 @@ function HorizontalPanelRun({ scene, length, side, config }) {
             scene={scene}
             position={transform.position}
             rotation={transform.rotation}
-            scale={[pieceHeight, (piece.x1 - piece.x0) / 3, 1]}
+            scale={[HORIZONTAL_PANEL_HEIGHT_M, (piece.x1 - piece.x0) / 3, 1]}
             material={material}
-            clippingPlane={clippingPlanes}
+            clippingPlane={pieceClips}
           />
         );
       });
@@ -329,7 +330,7 @@ function JointFlashing({ side, axisPosition, start, end, config, material }) {
     return (
       <mesh name={`${side}-horizontal-panel-joint-flashing`} position={[axisPosition, y, direction * (lengthM / 2 + JOINT_FLASHING_OFFSET_M)]} castShadow receiveShadow>
         <boxGeometry args={[JOINT_FLASHING_WIDTH_M, height, JOINT_FLASHING_DEPTH_M]} />
-        <meshStandardMaterial {...material} />
+        <meshPhysicalMaterial {...material} />
       </mesh>
     );
   }
@@ -338,7 +339,7 @@ function JointFlashing({ side, axisPosition, start, end, config, material }) {
   return (
     <mesh name={`${side}-horizontal-panel-joint-flashing`} position={[direction * (widthM / 2 + JOINT_FLASHING_OFFSET_M), y, axisPosition]} castShadow receiveShadow>
       <boxGeometry args={[JOINT_FLASHING_DEPTH_M, height, JOINT_FLASHING_WIDTH_M]} />
-      <meshStandardMaterial {...material} />
+      <meshPhysicalMaterial {...material} />
     </mesh>
   );
 }
@@ -347,11 +348,7 @@ function PanelJointFlashings({ length, side, config }) {
   const panels = horizontalPanelSegments(length, getWallPanelLengthM(config.cladding));
   const joints = panels.slice(0, -1).map((panel) => panel.end);
   const color = getCladdingColor(config.cladding);
-  const material = {
-    color: color.hex,
-    metalness: 0.52,
-    roughness: 0.42,
-  };
+  const material = paintedMetalProps(color.hex, "flashing");
 
   return joints.flatMap((axisPosition, jointIndex) => {
     const height = Math.max(0, wallHeightAtWorldAxis(side, axisPosition, config));
