@@ -1,3 +1,13 @@
+import {
+  FLASHING_FINISH_OPTIONS,
+  FRAME_FINISH_OPTIONS,
+  GATE_FINISH_OPTIONS,
+  GUTTER_FINISH_OPTIONS,
+  ROOF_FINISH_OPTIONS,
+  WALL_FINISH_OPTIONS,
+  getFinishForRole,
+} from "@/config/materialFinishes";
+
 export const PRESETS = {
   large_hall: {
     label: "Duża hala",
@@ -86,60 +96,35 @@ const DEFAULT_WALL_PANEL_TYPES = {
         defaultProfile: "linear",
         profiles: ["linear"],
         thicknessMm: [40, 50, 60, 80, 100, 120],
-        colors: {
-          anthracite: { label: "Antracyt", hex: "#3f474f" },
-          silver: { label: "Srebrny", hex: "#c8d0d5" },
-          graphite: { label: "Grafit", hex: "#4b5563" },
-          white: { label: "Bialy", hex: "#e8edf0" },
-        },
+        colors: WALL_FINISH_OPTIONS,
       },
       smooth: {
         label: "Gladka",
         defaultProfile: "smooth",
         profiles: ["smooth"],
         thicknessMm: [40, 50, 60, 80, 100, 120],
-        colors: {
-          anthracite: { label: "Antracyt", hex: "#3f474f" },
-          silver: { label: "Srebrny", hex: "#c8d0d5" },
-          graphite: { label: "Grafit", hex: "#4b5563" },
-          white: { label: "Bialy", hex: "#e8edf0" },
-        },
+        colors: WALL_FINISH_OPTIONS,
       },
       macro_linear: {
         label: "Macro linear",
         defaultProfile: "macro_linear",
         profiles: ["macro_linear"],
         thicknessMm: [40, 50, 60, 80, 100, 120],
-        colors: {
-          anthracite: { label: "Antracyt", hex: "#3f474f" },
-          silver: { label: "Srebrny", hex: "#c8d0d5" },
-          graphite: { label: "Grafit", hex: "#4b5563" },
-          white: { label: "Bialy", hex: "#e8edf0" },
-        },
+        colors: WALL_FINISH_OPTIONS,
       },
       micro_linear: {
         label: "Micro linear",
         defaultProfile: "micro_linear",
         profiles: ["micro_linear"],
         thicknessMm: [40, 50, 60, 80, 100, 120],
-        colors: {
-          anthracite: { label: "Antracyt", hex: "#3f474f" },
-          silver: { label: "Srebrny", hex: "#c8d0d5" },
-          graphite: { label: "Grafit", hex: "#4b5563" },
-          white: { label: "Bialy", hex: "#e8edf0" },
-        },
+        colors: WALL_FINISH_OPTIONS,
       },
       micro_wave: {
         label: "Micro wave",
         defaultProfile: "micro_wave",
         profiles: ["micro_wave"],
         thicknessMm: [40, 50, 60, 80, 100, 120],
-        colors: {
-          anthracite: { label: "Antracyt", hex: "#3f474f" },
-          silver: { label: "Srebrny", hex: "#c8d0d5" },
-          graphite: { label: "Grafit", hex: "#4b5563" },
-          white: { label: "Bialy", hex: "#e8edf0" },
-        },
+        colors: WALL_FINISH_OPTIONS,
       },
     },
   },
@@ -170,11 +155,7 @@ const ROOF_PANEL_MODELS = {
   pir_roof: {
     label: "PIR Dachowa",
     thicknessMm: [60, 80, 100, 120],
-    colors: {
-      graphite: { label: "Grafit", hex: "#4b5563" },
-      anthracite: { label: "Antracyt", hex: "#3f474f" },
-      silver: { label: "Srebrny", hex: "#c8d0d5" },
-    },
+    colors: ROOF_FINISH_OPTIONS,
   },
 };
 
@@ -198,9 +179,7 @@ export const DEFAULT_ROOF_CLADDING_SELECTION = {
 
 export const FLASHING_COLORS = {
   roof_match: { label: "Jak dach", hex: null },
-  anthracite: { label: "Antracyt", hex: "#3f474f" },
-  graphite: { label: "Grafit", hex: "#4b5563" },
-  silver: { label: "Srebrny", hex: "#c8d0d5" },
+  ...FLASHING_FINISH_OPTIONS,
 };
 
 export const FLASHING_PACKAGES = {
@@ -223,11 +202,9 @@ export const FLASHING_PACKAGES = {
 // poniewaz rynny czesto wystepuja w innych wykladzinach (cynk, miedz).
 export const GUTTER_COLORS = {
   roof_match: { label: "Jak dach", hex: null },
-  zinc: { label: "Cynk", hex: "#aeb8bd" },
-  copper: { label: "Miedz", hex: "#9c6234" },
-  anthracite: { label: "Antracyt", hex: "#3f474f" },
-  graphite: { label: "Grafit", hex: "#4b5563" },
-  silver: { label: "Srebrny", hex: "#c8d0d5" },
+  zinc: { ...GUTTER_FINISH_OPTIONS.galvanized, id: "zinc", label: "Cynk" },
+  copper: { label: "Miedź", hex: "#9c6234", kind: "metal", group: "metallic", surfaceFamily: "metallic", roughness: 0.34, metalness: 0.68 },
+  ...GUTTER_FINISH_OPTIONS,
 };
 
 export const GUTTER_PROFILES = {
@@ -291,7 +268,8 @@ export function getCladdingProfile(selection) {
 
 export function getCladdingColor(selection) {
   const model = getCladdingModel(selection);
-  return model.colors[selection.color] || model.colors[DEFAULT_CLADDING_SELECTION.color];
+  return model.colors[selection.color]
+    || getFinishForRole(selection.color, "wall", DEFAULT_CLADDING_SELECTION.color);
 }
 
 export function getRoofCladdingManufacturer(selection) {
@@ -305,7 +283,8 @@ export function getRoofCladdingModel(selection) {
 
 export function getRoofCladdingColor(selection) {
   const model = getRoofCladdingModel(selection);
-  return model.colors[selection.roofColor] || model.colors[DEFAULT_ROOF_CLADDING_SELECTION.roofColor];
+  return model.colors[selection.roofColor]
+    || getFinishForRole(selection.roofColor, "roof", DEFAULT_ROOF_CLADDING_SELECTION.roofColor);
 }
 
 export const WALL_THICKNESS = [40, 50, 60, 80, 100, 120];
@@ -409,27 +388,22 @@ export const TILTING_LAYOUTS = {
   },
 };
 
-export const GATE_COLORS = {
-  anthracite: { label: "Antracyt RAL 7016", hex: "#383E42" },
-  white: { label: "Biały RAL 9016", hex: "#F1F0EA" },
-  brown: { label: "Brązowy RAL 8014", hex: "#49352F" },
-  grey: { label: "Szary RAL 7037", hex: "#5B5F62" },
-  golden_oak: { label: "Złoty Dąb", hex: "#9A6326", wood: true },
-  walnut: { label: "Orzech", hex: "#5A3A22", wood: true },
-  winchester: { label: "Winchester", hex: "#6E5A43", wood: true },
-};
+export const GATE_COLORS = GATE_FINISH_OPTIONS;
+
+const GATE_METAL_IDS = Object.keys(GATE_COLORS).filter((key) => GATE_COLORS[key].kind === "metal");
+const GATE_WOOD_IDS = Object.keys(GATE_COLORS).filter((key) => GATE_COLORS[key].kind === "wood");
 
 const UNIPRO_STRUCTURE_COLORS = {
-  woodgrain: ["brown", "white", "golden_oak", "walnut"],
-  smoothgrain: ["anthracite", "golden_oak", "walnut", "winchester"],
-  sandgrain: ["anthracite"],
-  silkline: ["anthracite", "white", "grey"],
+  woodgrain: ["brown", "white", "anthracite", ...GATE_WOOD_IDS],
+  smoothgrain: [...GATE_METAL_IDS, ...GATE_WOOD_IDS],
+  sandgrain: GATE_METAL_IDS,
+  silkline: GATE_METAL_IDS,
 };
 
 const INNOVO_STRUCTURE_COLORS = {
-  smoothgrain: ["golden_oak", "walnut", "winchester"],
-  sandgrain: ["anthracite"],
-  silkline: ["anthracite", "white", "grey"],
+  smoothgrain: [...GATE_METAL_IDS, ...GATE_WOOD_IDS],
+  sandgrain: GATE_METAL_IDS,
+  silkline: GATE_METAL_IDS,
 };
 
 const SECTIONAL_MODELS = {
@@ -588,13 +562,7 @@ export function getGateColor(selection) {
 // Drzwi techniczne i okna
 // ----------------------------------------------------------------------------
 
-export const OPENING_FRAME_COLORS = {
-  anthracite: { label: "Antracyt RAL 7016", hex: "#383E42" },
-  white: { label: "Biały RAL 9016", hex: "#F1F0EA" },
-  grey: { label: "Szary RAL 7037", hex: "#6B7074" },
-  brown: { label: "Brązowy RAL 8017", hex: "#49352F" },
-  silver: { label: "Srebrny RAL 9006", hex: "#A9B0B4" },
-};
+export const OPENING_FRAME_COLORS = FRAME_FINISH_OPTIONS;
 
 export const DOOR_MODELS = {
   cladding_match: {
@@ -855,6 +823,378 @@ export const DEFAULT_WINDOW_SELECTION = {
   openMode: "closed",
   open: false,
 };
+
+function presetCladding(patch = {}) {
+  const selection = {
+    ...DEFAULT_CLADDING_SELECTION,
+    ...DEFAULT_ROOF_CLADDING_SELECTION,
+    ...patch,
+  };
+
+  return {
+    ...selection,
+    wallProfile: selection.profile,
+    wallPirThicknessMm: selection.thicknessMm,
+    roofPirThicknessMm: selection.roofThicknessMm,
+  };
+}
+
+function presetRoof(type, pitchPercent, overhangM = {}) {
+  return {
+    type,
+    pitchPercent,
+    overhangM: {
+      front: 0.2,
+      back: 0.2,
+      left: 0.2,
+      right: 0.2,
+      ...overhangM,
+    },
+  };
+}
+
+export const PRESET_DEFAULTS = Object.freeze({
+  single_garage: {
+    roof: presetRoof("single_back", 8, { front: 0.25, back: 0.25, left: 0.25, right: 0.25 }),
+    cladding: presetCladding({
+      model: "micro_linear",
+      profile: "micro_linear",
+      thicknessMm: 60,
+      panelLengthM: 8,
+      color: "silver",
+      roofThicknessMm: 80,
+      roofColor: "anthracite",
+    }),
+    flashings: { enabled: true, package: "premium", color: "anthracite", corners: true, roofEdges: true, ridge: true },
+    gutters: { enabled: true, color: "anthracite", profile: "half_round", size: 125, downspoutSize: 80, downspouts: true, leafGuards: false, package: "standard" },
+  },
+  double_garage: {
+    roof: presetRoof("single_back", 8, { front: 0.3, back: 0.3, left: 0.25, right: 0.25 }),
+    cladding: presetCladding({
+      model: "smooth",
+      profile: "smooth",
+      thicknessMm: 60,
+      panelLengthM: 8,
+      color: "silver",
+      roofThicknessMm: 80,
+      roofColor: "anthracite",
+    }),
+    flashings: { enabled: true, package: "premium", color: "anthracite", corners: true, roofEdges: true, ridge: true },
+    gutters: { enabled: true, color: "anthracite", profile: "half_round", size: 150, downspoutSize: 100, downspouts: true, leafGuards: false, package: "standard" },
+  },
+  hall: {
+    roof: presetRoof("gable_left_right", 22, { front: 0.3, back: 0.3, left: 0.35, right: 0.35 }),
+    cladding: presetCladding({
+      model: "micro_linear",
+      profile: "micro_linear",
+      thicknessMm: 80,
+      panelLengthM: 12,
+      color: "silver",
+      roofThicknessMm: 100,
+      roofColor: "graphite",
+    }),
+    flashings: { enabled: true, package: "premium", color: "graphite", corners: true, roofEdges: true, ridge: true },
+    gutters: { enabled: true, color: "graphite", profile: "box", size: 150, downspoutSize: 100, downspouts: true, leafGuards: true, package: "premium" },
+  },
+  large_hall: {
+    roof: presetRoof("gable_left_right", 18, { front: 0.35, back: 0.35, left: 0.45, right: 0.45 }),
+    cladding: presetCladding({
+      model: "smooth",
+      profile: "smooth",
+      thicknessMm: 100,
+      panelLengthM: 16,
+      color: "white",
+      roofThicknessMm: 120,
+      roofColor: "silver",
+    }),
+    flashings: { enabled: true, package: "premium", color: "silver", corners: true, roofEdges: true, ridge: true },
+    gutters: { enabled: true, color: "zinc", profile: "box", size: 200, downspoutSize: 120, downspouts: true, leafGuards: true, package: "premium" },
+  },
+});
+
+export function getPresetDefaults(preset) {
+  const defaults = PRESET_DEFAULTS[preset] || PRESET_DEFAULTS.single_garage;
+  return {
+    roof: {
+      ...defaults.roof,
+      overhangM: { ...defaults.roof.overhangM },
+    },
+    cladding: { ...defaults.cladding },
+    flashings: { ...defaults.flashings },
+    gutters: { ...defaults.gutters },
+  };
+}
+
+function presetGate(id, patch) {
+  return {
+    id,
+    kind: "gate",
+    wall: "front",
+    offsetM: 0,
+    widthM: 2.5,
+    heightM: 2.25,
+    sillM: 0,
+    ...DEFAULT_GATE_SELECTION,
+    ...patch,
+  };
+}
+
+function presetDoor(id, patch) {
+  return {
+    id,
+    kind: "door",
+    wall: "right",
+    offsetM: 0,
+    widthM: 0.95,
+    heightM: 2.1,
+    sillM: 0,
+    ...DEFAULT_DOOR_SELECTION,
+    ...patch,
+  };
+}
+
+function presetWindow(id, patch) {
+  return {
+    id,
+    kind: "window",
+    wall: "left",
+    offsetM: 0,
+    widthM: 0.8,
+    heightM: 0.6,
+    sillM: 1.15,
+    ...DEFAULT_WINDOW_SELECTION,
+    ...patch,
+  };
+}
+
+function presetRoofWindow(id, patch) {
+  return {
+    id,
+    kind: "roofWindow",
+    wall: "roof",
+    offsetM: 0,
+    widthM: 1,
+    heightM: 2,
+    sillM: 0,
+    ...DEFAULT_WINDOW_SELECTION,
+    model: "roof_skylight",
+    ...patch,
+  };
+}
+
+export const PRESET_OPENINGS = Object.freeze({
+  single_garage: [
+    presetGate("single-main-gate", {
+      widthM: 2.5,
+      heightM: 2.25,
+      gateType: "sectional",
+      model: "prime",
+      pattern: "smooth",
+      structure: "silkline",
+    }),
+    presetDoor("single-service-door", {
+      wall: "right",
+      offsetM: 1.55,
+      widthM: 0.95,
+      heightM: 2.1,
+      model: "sectional_single",
+    }),
+    presetWindow("single-side-window", {
+      wall: "left",
+      offsetM: -1,
+      widthM: 1.5,
+      heightM: 0.5,
+      sillM: 1.35,
+      model: "fixed",
+      glassType: "neutral",
+    }),
+  ],
+  double_garage: [
+    presetGate("double-wide-gate", {
+      offsetM: 0,
+      widthM: 5,
+      heightM: 2.35,
+      gateType: "sectional",
+      model: "prime",
+      pattern: "smooth",
+      structure: "silkline",
+    }),
+    presetDoor("double-service-door", {
+      wall: "right",
+      offsetM: 1.75,
+      widthM: 0.95,
+      heightM: 2.1,
+      model: "sectional_single",
+    }),
+    presetWindow("double-back-window-left", {
+      wall: "back",
+      offsetM: -1.2,
+      widthM: 1.5,
+      heightM: 0.5,
+      sillM: 1.4,
+      model: "fixed",
+      glassType: "neutral",
+    }),
+    presetWindow("double-back-window-right", {
+      wall: "back",
+      offsetM: 1.2,
+      widthM: 1.5,
+      heightM: 0.5,
+      sillM: 1.4,
+      model: "fixed",
+      glassType: "neutral",
+    }),
+  ],
+  hall: [
+    presetGate("hall-main-gate", {
+      widthM: 4,
+      heightM: 3.6,
+      gateType: "roller",
+      model: "br77",
+      color: "anthracite",
+    }),
+    presetDoor("hall-service-door", {
+      wall: "front",
+      offsetM: 3.4,
+      widthM: 1,
+      heightM: 2.2,
+      model: "thermo_vision",
+    }),
+    presetWindow("hall-left-band-front", {
+      wall: "left",
+      offsetM: -5.35,
+      widthM: 3,
+      heightM: 0.8,
+      sillM: 2.6,
+      model: "industrial_band",
+      glassType: "neutral",
+    }),
+    presetWindow("hall-left-band-back", {
+      wall: "left",
+      offsetM: 5.35,
+      widthM: 3,
+      heightM: 0.8,
+      sillM: 2.6,
+      model: "industrial_band",
+      glassType: "neutral",
+    }),
+    presetWindow("hall-right-band", {
+      wall: "right",
+      offsetM: 1.8,
+      widthM: 3,
+      heightM: 0.8,
+      sillM: 2.6,
+      model: "industrial_band",
+      glassType: "neutral",
+    }),
+    presetRoofWindow("hall-roof-band", {
+      widthM: 3,
+      heightM: 1,
+      model: "roof_band",
+      glassType: "satin",
+    }),
+  ],
+  large_hall: [
+    presetGate("large-hall-left-gate", {
+      offsetM: -2.75,
+      widthM: 4.5,
+      heightM: 4.2,
+      gateType: "roller",
+      model: "br100",
+      color: "anthracite",
+    }),
+    presetGate("large-hall-right-gate", {
+      offsetM: 2.1,
+      widthM: 4.5,
+      heightM: 4.2,
+      gateType: "roller",
+      model: "br100",
+      color: "anthracite",
+    }),
+    presetDoor("large-hall-service-door", {
+      wall: "front",
+      offsetM: 5.2,
+      widthM: 1.1,
+      heightM: 2.25,
+      model: "utility_ribbed",
+    }),
+    presetGate("large-hall-side-gate", {
+      wall: "right",
+      offsetM: 0,
+      widthM: 3.6,
+      heightM: 3.8,
+      gateType: "roller",
+      model: "br100",
+      color: "anthracite",
+    }),
+    presetGate("large-hall-back-gate", {
+      wall: "back",
+      offsetM: -2.8,
+      widthM: 4,
+      heightM: 4,
+      gateType: "roller",
+      model: "br100",
+      color: "anthracite",
+    }),
+    presetWindow("large-hall-left-band-front", {
+      wall: "left",
+      offsetM: -9.3,
+      widthM: 3.2,
+      heightM: 0.8,
+      sillM: 3.2,
+      model: "industrial_band",
+      glassType: "neutral",
+    }),
+    presetWindow("large-hall-left-band-back", {
+      wall: "left",
+      offsetM: 9.3,
+      widthM: 3.2,
+      heightM: 0.8,
+      sillM: 3.2,
+      model: "industrial_band",
+      glassType: "neutral",
+    }),
+    presetWindow("large-hall-right-band-front", {
+      wall: "right",
+      offsetM: -9.3,
+      widthM: 3.2,
+      heightM: 0.8,
+      sillM: 3.2,
+      model: "industrial_band",
+      glassType: "neutral",
+    }),
+    presetWindow("large-hall-right-band-back", {
+      wall: "right",
+      offsetM: 9.3,
+      widthM: 3.2,
+      heightM: 0.8,
+      sillM: 3.2,
+      model: "industrial_band",
+      glassType: "neutral",
+    }),
+    presetRoofWindow("large-hall-roof-band-left", {
+      offsetM: -2.25,
+      sillM: -5,
+      widthM: 3,
+      heightM: 1,
+      model: "roof_band",
+      glassType: "satin",
+    }),
+    presetRoofWindow("large-hall-roof-band-right", {
+      offsetM: 2.25,
+      sillM: 5,
+      widthM: 3,
+      heightM: 1,
+      model: "roof_band",
+      glassType: "satin",
+    }),
+  ],
+});
+
+export function getPresetOpenings(preset) {
+  const openings = PRESET_OPENINGS[preset] || PRESET_OPENINGS.single_garage;
+  return openings.map((opening) => ({ ...opening }));
+}
 
 export function getWindowModel(selection) {
   return WINDOW_MODELS[selection.model] || WINDOW_MODELS[DEFAULT_WINDOW_SELECTION.model];

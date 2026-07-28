@@ -33,6 +33,8 @@ nie zastępuje projektu wykonawczego.
 | Jętki | Poziome ściągi par krokwi w szerszych dwuspadach (rozpiętość ≥ ~4,5 m) |
 | Słupek szczytowy | Słup pod kalenicą w ścianie szczytowej dwuspadu |
 | Nadproże + słupki przybramowe | Wzmocniona rama otworu bramowego |
+| Rygiel podokienny | Dolny rygiel podramy okna; oparcie dociętej płyty i słupka podokiennego |
+| Słupek podokienny / nadprożowy | Odcinki słupa przerwanego otworem, oparte na podramie |
 | Zastrzały narożne | Krótkie ukośniki słup–oczep usztywniające szkielet |
 | Rygiel pośredni ścian | Dodatkowy poziomy rygiel przy ścianach wyższych niż ~3 m |
 
@@ -44,24 +46,53 @@ w obiektach halowych.
 
 ### 3.1 Rozstaw podpór poszycia
 
-Rozstaw podpór wynika z dopuszczalnej rozpiętości płyty (im grubszy rdzeń PIR, tym większa),
-ale w praktyce ogranicza go też sztywność samego szkieletu:
+> **UWAGA — poprzednia wersja tej tabeli była błędna.** Podawała rozstaw słupów
+> 1,20–1,80 m i płatwi 0,90–1,50 m. **To nie jest nośność płyty warstwowej.** Płyta
+> warstwowa jest samonośna na kilku metrach — to jej podstawowa zaleta — a podane
+> wartości odpowiadają raczej rozstawowi podpór dla blachy trapezowej albo gęstości
+> linii mocowania. Skutek: konstrukcje wychodziły około **trzy razy za gęste**.
+> Producenci dla lekkich ścian z rdzeniem 80–120 mm podają rozpiętości „do ~5 m".
 
-| Grubość płyty ściennej | Rozstaw słupów (praktyczny) |
+Rozstaw podpór wynika z dopuszczalnej rozpiętości płyty (im grubszy rdzeń PIR, tym większa),
+ale w praktyce ogranicza go też sztywność samego szkieletu i rozmieszczenie linii mocowania.
+Poniższe wartości są **zachowawcze wobec katalogów producentów** — nie mamy tablic
+konkretnego wyrobu, a wybór producenta jest w katalogu konfiguratora.
+
+| Grubość płyty ściennej | Rozstaw słupów |
 |---|---|
-| 40 mm | ~1,20 m |
-| 60 mm | ~1,35 m |
-| 80 mm | ~1,50 m |
-| 100 mm | ~1,65 m |
-| 120 mm | ~1,80 m |
+| 40 mm | ~2,00 m |
+| 60 mm | ~2,40 m |
+| 80 mm | ~2,80 m |
+| 100 mm | ~3,20 m |
+| 120 mm | ~3,60 m |
 
 | Grubość płyty dachowej | Rozstaw płatwi |
 |---|---|
-| 40 mm | ~0,90 m |
-| 60 mm | ~1,05 m |
-| 80 mm | ~1,20 m |
-| 100 mm | ~1,35 m |
-| 120 mm | ~1,50 m |
+| 40 mm | ~1,60 m |
+| 60 mm | ~1,95 m |
+| 80 mm | ~2,30 m |
+| 100 mm | ~2,65 m |
+| 120 mm | ~3,00 m |
+
+Rozstaw płatwi jest dodatkowo korygowany strefą śniegową (płyta też przenosi śnieg).
+
+### 3.1a Przekrój ze zginania, nie z rozpiętości
+
+Szerszy rozstaw oznacza, że każda belka zbiera szerszy pas obciążenia, więc **przekroju
+nie wolno dobierać z samej rozpiętości**. Płatwie i krokwie idą przez
+`pickProfileByBending`: q = obciążenie × pas zbierany, M = qL²/8, σ = M/Wy ≤ f_y.
+
+Obciążenie połaci liczone jest ze strefy śniegowej (PN-EN 1991-1-3, załącznik krajowy):
+sk = 0,7 / 0,9 / 1,2 / 1,6 / 2,0 kN/m² dla stref 1–5, s = 0,8·sk, kombinacja 1,35·G + 1,5·S.
+Dzięki temu strefa śniegowa wpływa na PRZEKRÓJ, a nie tylko na rozstaw.
+
+Ta zmiana ujawniła, że poprzedni dobór był **niedowymiarowany**: płatew RHS 60×40×2 ma
+Wy = 6,4 cm³, a przy rozstawie 1,2 m i rozpiętości 3,22 m wymagane było 10,3 cm³. Model był
+więc jednocześnie za gęsty i za słaby — rzadsze podpory z prawidłowym przekrojem wychodzą
+**lżejsze** (44 kg wobec 65 kg dla płatwi garażu 3,5 × 6 m).
+
+Gdy nawet najmocniejszy profil z tablicy nie przenosi momentu, model zgłasza
+ostrzeżenie `section_capacity` zamiast po cichu przyjąć zbyt słaby przekrój.
 
 ### 3.2 Dobór przekrojów wg rozpiętości elementu
 
@@ -117,24 +148,126 @@ pod konkretną lokalizację (śnieg/wiatr) wykonuje uprawniony konstruktor.**
 
 ## 7. Odwzorowanie w kodzie
 
-- `src/scene/StructureSystem.jsx` — `garageSpec(config)`: rozstawy słupów/płatwi z tabel 3.1
-  (interpolacja po grubości płyty), przekroje z tabeli 3.2 (wg wysokości ściany i rozpiętości
-  spadu), etykiety profili (np. "80×80×3") przy każdej roli.
-- `GarageStructure` — generator szkieletu: słupy narożne/pośrednie, podwalina, oczep,
-  krokwie/płatwie wg typu dachu, jętki, zastrzały, rama bramy; elementy pomijane w świetle
-  otworów, rygiel pośredni przy ścianie ≥ ~3 m.
+Konstrukcja jest **czystym modelem** — `buildStructure(inputs)` zwraca listę elementów
+(rola, profil, początek, koniec, długość, masa jednostkowa) bez JSX i bez obiektów `three`.
+Ten sam model zasila scenę 3D, zestawienie stali i rysunki wektorowe w PDF.
+
+- `src/config/steelProfiles.js` — katalog profili (SHS/RHS, IPE/HEA, Z/C) z masami `kgPerM`
+  wg tablic wyrobów oraz tabele doboru wg rozpiętości. `pickProfile(tables, role, span, stepUp)`
+  — `stepUp` realizuje wzmocnienie „o stopień wyżej".
+- `src/scene/structure/spec.js` — `garageSpec` / `hallSpec`: rozstawy z tabel 3.1
+  (interpolacja po grubości PIR odtwarza tabelę dokładnie), przekroje z tabeli 3.2,
+  poziomy konstrukcji (`REINFORCEMENT_LEVELS`) i korekta strefą śniegową.
+
+  | Poziom | Rozstawy | Profile | Charakter |
+  |---|---|---|---|
+  | **Lekka** | ×1,25 (szersze od tabeli) | z tabeli | mniej słupów, płatwi i ram; ostrzeżenie ofertowe |
+  | **Standard** | ×1,00 (tabela 3.1) | z tabeli | praktyka producentów |
+  | **Wzmocniona** | ×0,85 | +1 stopień | zastrzały przy wszystkich osiach krokwi, stężenia X |
+
+  Wariant lekki jest fizycznie uzasadniony — płyta warstwowa ma zapas nad wartościami
+  tabelarycznymi (100 mm PIR przenosi kilkumetrowe rozpiętości) — ale margines sztywności
+  szkieletu jest mniejszy, dlatego `buildStructure` dokłada ostrzeżenie
+  `light_structure` (albo mocniejsze `light_structure_risk` przy cienkiej płycie
+  lub strefie śniegowej ≥ 4). Rozstaw ram hal jest twardo ograniczony do 6 m,
+  a rozstaw krokwi do 3,2 m, żeby wariant lekki nie wyszedł poza tabelę doboru płatwi.
+- `src/scene/structure/garage.js` — szkielet garażu. **Kolejność doboru jest istotna:**
+  najpierw linie nośne połaci (ich rozstaw wynika z nośności płatwi), potem słupy
+  dogęszczane pod nimi do rozpiętości płyty. Każda krokiew stoi na słupie i nie powstaje
+  krata krokwi × płatwi. W dwuspadzie pierwsza płatew idzie tuż przy kalenicy — inaczej
+  górna krawędź płyty wisi bez podparcia między krokwiami.
+
+  **Oczep skośny ≠ krokiew.** Dwie skrajne linie połaci leżą na ścianach biegnących wzdłuż
+  spadu, czyli NA słupach co ~1,2–1,8 m. Ich rozpiętość to rozstaw słupów, więc dostają
+  profil oczepu (`rakedTopRail`). Tylko krokiew pośrednia rozpina się swobodnie między
+  ścianami szczytowymi i wymaga przekroju z tabeli krokwi. Dobieranie profilu skrajnej
+  linii z pełnej długości ściany dawało w garażu 3,5 m RHS 100×60×3 na 5,7 m tam, gdzie
+  realna rozpiętość wynosi 1,15 m — to była **największa pojedyncza pozycja masy**.
+
+  **Krokwi pośrednich może nie być wcale.** Lekka płatew przenosi ~3,5 m, więc dopóki
+  budynek jest węższy, płatwie leżą wprost na obu oczepach skośnych. Krokiew dochodzi
+  dopiero wtedy, gdy rozpiętość płatwi przekroczyłaby jej nośność (garaż 3,5 m → 0 krokwi,
+  6 m → 1, 7 m → 2).
+
+  **Blachy podstawy tylko tam, gdzie realnie są.** Szkielet garażowy jest spawany, a do
+  płyty kotwiona jest PODWALINA (co ~1 m); słupki pośrednie są w nią wspawane i nie mają
+  własnych stóp. Stopa z 4 kotwami pod każdym słupkiem dawała 56 kotew w garażu 3,5 × 6 m.
+
+  **Podwalina, oczep i rygiel pośredni są CIĄGŁE.** Słupy są do nich przyspawane, więc
+  przerywają je tylko otwory sięgające posadzki. Przycinanie przy każdym słupie dawało
+  kilkanaście krótkich odcinków (w tym 20-centymetrowe skrawki), czego nikt nie spawa
+  i co zaśmiecało zestawienie stali. W halach rygiel i podwalina są przerywane wyłącznie
+  słupami RAM — przez słupki pośrednie przechodzą ciągiem i są do nich przykręcone
+  (wcześniej wychodziło 44 odcinki po ~1,6 m zamiast pełnych przęseł po ~3,3 m).
+- `src/scene/structure/hall.js` — hala z ramami portalowymi. Płyty ścienne leżą **poziomo**,
+  więc ściany dostają **słupki pośrednie** w rozstawie z rozpiętości płyty; rygle poziome
+  usztywniają szkielet, ale nie są podporą poszycia — dlatego ich rozstaw to ~1,8–2,0 m,
+  a nie ~1,05 m (gęstsze rygle podwajały funkcję słupków i szło na nie ~9% masy hali).
+  Ramy to **IPE, nie HEA** (rama pracuje na zginanie w swojej płaszczyźnie, gdzie
+  dwuteownik wąskostopowy daje nośność taniej — a na słupach idzie ~25–30% masy).
+  Płatew kalenicowa jest PŁATWIĄ (Z, stopień wyżej), nie ryglem ramy. Stężenia krzyżowe
+  to **ściągi prętowe** M16/M20 pracujące na rozciąganie, nie profile zamknięte;
+  na ściskanie pracuje tylko zastrzał podokapowy i on zostaje SHS.
+
+### Orientacyjna masa konstrukcji (poziom Standard)
+
+| Obiekt | Masa | kg/m² |
+|---|---|---|
+| Garaż 3,5 × 6 | ~354 kg | 16,9 |
+| Garaż 6 × 6 | ~559 kg | 15,5 |
+| Hala 9 × 15 | ~4,5 t | 33,6 |
+| Hala 12 × 24 | ~8,8 t | 30,7 |
+
+Wariant Lekki schodzi niżej, Wzmocniony rośnie. Wartości do kontroli przy zmianach reguł —
+jeśli garaż wychodzi grubo powyżej 20 kg/m², a hala powyżej 40 kg/m², coś jest przeszacowane.
+Strefy śniegowe 4–5 podnoszą masę wyraźnie i to jest poprawne: przekrój wynika z obciążenia.
+- `src/scene/structure/openings.js` — **każdy** otwór w ścianie zmienia szkielet, także okno.
+  `openingBandsAtCoord` zwraca pionowe pasy zajęte przez otwory w osi słupa, a
+  `addPostWithOpenings` (parts.js) liczy z nich odcinki słupa. Jedna reguła obsługuje oba
+  warianty: otwór do posadzki (brama/drzwi) zostawia tylko słupek nadprożowy, okno dzieli
+  słup na słupek podokienny i nadprożowy. Każdy otwór dostaje podramę: stojaki + nadproże,
+  a okno dodatkowo rygiel podokienny. Okna dachowe (`wall === "roof"`) nie dotyczą ścian.
+- **Konwencja współrzędnej otworu (pułapka).** `openingWallCoord` — jak
+  `wallOpeningAxisCenter` w geometry.js i `wallOpeningRects` w WallPanels.jsx — zwraca
+  **surową współrzędną świata** wzdłuż ściany: `x` dla przód/tył, `z` dla lewa/prawa.
+  Ujemny offset ścian „back" i „left" jest już w niej zawarty. Nie wolno mnożyć jej
+  po raz drugi przez współczynnik znaku — taki błąd odbija geometrię wyłącznie na
+  ścianie lewej (na prawej znak to +1, a na tylnej bywa ignorowany), więc łatwo
+  go przeoczyć. Zdarzył się dwa razy: w `openingPoint` i w `elevationSvg`.
+- **Wyjątek:** słupa ramy portalowej w hali nie dzielimy pasem okiennym — to główna droga
+  obciążenia. Szklenie jest w rzeczywistości podzielone słupem na pola między ramami,
+  więc model zgłasza ostrzeżenie `window_crosses_frame` zamiast ciąć słup.
+- `src/scene/structure/collector.js` — zbiera elementy, liczy długości z osi (nie z geometrii
+  mesha, która jest wydłużona o `overlapM`), w trybie dev wykrywa duplikaty i elementy pokrywające się.
+- `src/scene/StructureSystem.jsx` — cienki renderer: mapuje tablice modelu na meshe.
+  Memoizacja po wąskim wycinku configu (`structure/inputs.js`), żeby zmiana kamery czy koloru
+  rynny nie wymuszała rekoncyliacji kilkuset meshy.
 - Poszycie: `src/scene/WallPanels.jsx` — pasy poziome co 1 m z zamkami, płyty i rdzeń
   docinane wokół otworów; `src/scene/FlashingSystem.jsx` — cokół, narożniki, obróbki dachu.
 
-## 8. Mapa drogowa
+## 8. Ofertowanie: BOM, rysunki, PDF
 
-1. **Zestawienie stali (BOM)** — lista elementów z etykiet profili: rola, profil, długość,
-   masa (kg/mb z tablic profili), suma masy; eksport CSV/PDF do ofertowania.
-2. **Strefy obciążeń** — opcjonalny parametr (strefa śniegowa/wiatrowa) korygujący rozstaw
-   płatwi; wartości z tabel producenta płyt.
-3. **Tabele producentów płyt** — zastąpienie wartości orientacyjnych rzeczywistymi kartami
+- `src/lib/bom/steelBom.js` — zestawienie stali: rola × profil → szt., długość, masa
+  (`lengthM × kgPerM`), blachy podstawy z pola × grubości × gęstości, kotwy, drobnica;
+  `steelOrderByProfile` daje zapotrzebowanie hutnicze z 5% zapasem na docinanie.
+- `src/lib/bom/panelBom.js` — powierzchnia ścian netto (całkowanie po `wallTopHeightAt`,
+  minus otwory) i **pochylona** powierzchnia połaci; `accessoryBom.js` — obróbki i orynnowanie.
+- `src/lib/projectSummary.js` — jedno źródło treści opisowej dla panelu i PDF.
+- `src/lib/drawings/*` — rzut, przekrój ramy i elewacje jako SVG generowane z modelu.
+- `src/lib/pdf/*` — dokument zamówienia w pdfmake (przypięty `0.3.11`), ładowany leniwie.
+  **PDF nie zawiera wyceny** — katalog nie ma cennika, więc rubryki cenowe zostają puste
+  do ręcznego uzupełnienia. Warstwę cenową można dołożyć bez zmian w generatorze.
+- `src/lib/capture/captureViews.js` — zrzuty widoków 3D; kamera ustawiana imperatywnie
+  z pominięciem animacji, `showDimensions` wymuszone na `false` (etykiety miarek są w DOM
+  i nie trafiają do bufora WebGL — wymiary idą na rysunki wektorowe).
+
+## 9. Mapa drogowa
+
+1. **Tabele producentów płyt** — zastąpienie wartości orientacyjnych rzeczywistymi kartami
    (Kingspan, Balex, Pruszyński…), wybór producenta już istnieje w katalogu.
-4. **Walidacje** — ostrzeżenia w UI, gdy konfiguracja wychodzi poza praktykę
-   (np. za duża rozpiętość przy cienkiej płycie, spadek poniżej minimum).
-5. **Detale montażowe** — łączniki, rynny/rury spustowe, wentylacja, opcjonalne drzwi
-   serwisowe i okna jako konfigurowalne otwory (store ma już strukturę `openings`).
+2. **Cennik** — `src/config/pricing.js` (zł/kg stali, zł/m² płyt wg grubości, ceny bram),
+   po dodaniu PDF policzy netto/VAT/brutto w istniejących rubrykach.
+3. **Profile dwuteowe w 3D** — `Beam.jsx` rysuje wyłącznie `boxGeometry`; hale mają poprawne
+   etykiety IPE/HEA i masy, ale wizualizacja przekroju jest przybliżona.
+4. **Strefa wiatrowa** — analogicznie do strefy śniegowej, korekta rozstawu słupów.
+5. **Detale montażowe** — łączniki, wentylacja, świetliki kalenicowe.

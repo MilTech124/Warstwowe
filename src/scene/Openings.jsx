@@ -23,7 +23,7 @@ import {
 import { getGateMountMetrics } from "@/scene/openings/gateGeometry";
 import { fitProfilePitch, T10SheetModules } from "@/scene/openings/T10Sheet";
 
-function StandardFrame({ opening, cladding }) {
+function StandardFrame({ opening, cladding, quality = "high" }) {
   const w = opening.widthM;
   const h = opening.heightM;
   const frame = opening.kind === "gate" ? 0.08 : opening.kind === "door" ? 0.035 : 0.055;
@@ -35,9 +35,13 @@ function StandardFrame({ opening, cladding }) {
       : null;
   const frameMaterial = useMemo(
     () => frameColor
-      ? getPaintedMetalMaterial(frameColor.hex, "flashing", { roughness: 0.34 })
+      ? getPaintedMetalMaterial(frameColor, "frame", {
+        quality,
+        projection: "local",
+        roughness: 0.34,
+      })
       : materials.trim,
-    [frameColor?.hex],
+    [frameColor, quality],
   );
   const showBottom = opening.kind === "window" || opening.kind === "roofWindow";
   const revealDepth = opening.kind === "gate" ? 0 : Math.max(0.08, (cladding?.wallPirThicknessMm || cladding?.thicknessMm || 60) / 1000 + 0.045);
@@ -84,11 +88,11 @@ function StandardFrame({ opening, cladding }) {
   );
 }
 
-function Frame({ opening, config }) {
+function Frame({ opening, config, quality = "high" }) {
   if (opening.kind === "gate") {
-    return <GateOpeningFrame opening={opening} config={config} />;
+    return <GateOpeningFrame opening={opening} config={config} quality={quality} />;
   }
-  return <StandardFrame opening={opening} cladding={config.cladding} />;
+  return <StandardFrame opening={opening} cladding={config.cladding} quality={quality} />;
 }
 
 function useOpeningToggle(opening) {
@@ -311,16 +315,18 @@ function WindowLeaf({ opening }) {
 // Bramy WIŚNIOWSKI
 // ---------------------------------------------------------------------------
 
-function useGateMaterial(opening) {
+function useGateMaterial(opening, quality = "high") {
   const color = getGateColor(opening);
   const structure = opening.structure;
   return useMemo(() => {
     const wood = color.wood || structure === "woodgrain";
-    if (wood) return getWoodGateMaterial(color.hex);
-    return getPaintedMetalMaterial(color.hex, "gate", {
+    if (wood) return getWoodGateMaterial(color, quality);
+    return getPaintedMetalMaterial(color, "gate", {
+      quality,
+      projection: "local",
       roughness: structure === "microline" ? 0.56 : 0.46,
     });
-  }, [color.hex, color.wood, structure]);
+  }, [color, quality, structure]);
 }
 
 function useGateToggle(opening) {
@@ -462,8 +468,8 @@ function GateTracks({ w, h, r, zV, horizLength }) {
   );
 }
 
-function SectionalGate({ opening }) {
-  const material = useGateMaterial(opening);
+function SectionalGate({ opening, quality = "high" }) {
+  const material = useGateMaterial(opening, quality);
   const model = getGateModel(opening);
   const pattern = opening.pattern || model.defaultPattern || "smooth";
   const w = opening.widthM;
@@ -541,11 +547,12 @@ function SectionalGate({ opening }) {
   );
 }
 
-function RollerGate({ opening }) {
-  const material = useGateMaterial(opening);
+function RollerGate({ opening, quality = "high" }) {
+  const material = useGateMaterial(opening, quality);
   const model = getGateModel(opening);
   const slatH = (model.slatHeightMm || 77) / 1000;
   const slatDepth = Math.min(0.022, slatH * 0.25);
+  const slatVisibleH = slatH + 0.004;
   const w = opening.widthM;
   const h = opening.heightM;
 
@@ -620,7 +627,7 @@ function RollerGate({ opening }) {
           ref={(el) => {
             slatRefs.current[i] = el;
           }}
-          args={[w, slatH * 0.92, slatDepth]}
+          args={[w, slatVisibleH, slatDepth]}
           radius={Math.min(0.018, slatH * 0.35)}
           smoothness={2}
           position={[0, cy, faceZ]}
@@ -663,8 +670,8 @@ function TiltingGateHandle({ depth, height }) {
   );
 }
 
-function TiltingGate({ opening }) {
-  const material = useGateMaterial(opening);
+function TiltingGate({ opening, quality = "high" }) {
+  const material = useGateMaterial(opening, quality);
   const model = getGateModel(opening);
   const layout = opening.layout || model.defaultLayout || "vertical_low";
   const layoutSpec = TILTING_LAYOUTS[layout] || TILTING_LAYOUTS.vertical_low;
@@ -731,10 +738,10 @@ function TiltingGate({ opening }) {
   );
 }
 
-function GateLeaf({ opening }) {
-  if (opening.gateType === "roller") return <RollerGate opening={opening} />;
-  if (opening.gateType === "tilting") return <TiltingGate opening={opening} />;
-  return <SectionalGate opening={opening} />;
+function GateLeaf({ opening, quality = "high" }) {
+  if (opening.gateType === "roller") return <RollerGate opening={opening} quality={quality} />;
+  if (opening.gateType === "tilting") return <TiltingGate opening={opening} quality={quality} />;
+  return <SectionalGate opening={opening} quality={quality} />;
 }
 
 export function Openings({ config, quality = "high" }) {
@@ -746,7 +753,7 @@ export function Openings({ config, quality = "high" }) {
           return (
             <group key={opening.id} position={roofTransform.position} rotation={roofTransform.rotation}>
               <group position={roofTransform.localPosition} rotation={roofTransform.localRotation}>
-                <Frame opening={opening} config={config} />
+                <Frame opening={opening} config={config} quality={quality} />
                 <group position={[0, 0, -0.06]}>
                   <DetailedWindowLeaf opening={opening} quality={quality} />
                 </group>
@@ -764,13 +771,13 @@ export function Openings({ config, quality = "high" }) {
           : 0;
         return (
           <group key={opening.id} position={transform.position} rotation={transform.rotation}>
-            <Frame opening={opening} config={config} />
+            <Frame opening={opening} config={config} quality={quality} />
             {opening.kind === "gate" && opening.gateType === "sectional" && (
-              <RealisticGateLeaf opening={opening} config={config} />
+              <RealisticGateLeaf opening={opening} config={config} quality={quality} />
             )}
             {opening.kind === "gate" && opening.gateType !== "sectional" && (
               <group position={[0, 0, legacyGateZ]}>
-                <GateLeaf opening={opening} />
+                <GateLeaf opening={opening} quality={quality} />
               </group>
             )}
             {opening.kind === "door" && (

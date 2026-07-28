@@ -345,12 +345,12 @@ function roofWindowCutouts(config, assembly) {
     .filter((cutout) => Math.abs(cutout.x) < widthM || Math.abs(cutout.z) < lengthM || metrics.rise >= 0);
 }
 
-export function RoofSystem({ config }) {
+export function RoofSystem({ config, quality = "high" }) {
   const { scene } = useGLTF(ROOF_PANEL_URL);
   const roofColor = getRoofCladdingColor(config.cladding);
   const roofMaterial = config.viewMode === "structure"
     ? materials.roofStructureMode
-    : paintedMetalProps(roofColor.hex, "roof");
+    : paintedMetalProps(roofColor, "roof", { quality, projection: "world" });
   const { widthM, lengthM, wallHeightM } = config.dimensions;
   const metrics = roofMetrics(config);
   const { centerX, centerZ, roofWidth, roofLength, frontRun, backRun, leftRun, rightRun } = roofFootprint(config);

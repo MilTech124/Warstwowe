@@ -327,8 +327,13 @@ export function DoorLeaf({ opening, quality = "high", cladding }) {
   const { scene: claddingScene } = useGLTF(claddingProfile.url);
   const color = model.matchCladding ? getCladdingColor(cladding) : getDoorColor(opening);
   const material = useMemo(
-    () => getPaintedMetalMaterial(color.hex, "gate", { roughness: 0.4, clearcoat: 0.12 }),
-    [color.hex],
+    () => getPaintedMetalMaterial(color, "door", {
+      quality,
+      projection: "local",
+      roughness: 0.4,
+      clearcoat: 0.12,
+    }),
+    [color, quality],
   );
   const updateOpening = useConfiguratorStore((state) => state.updateOpening);
   const leafRefs = useRef([]);

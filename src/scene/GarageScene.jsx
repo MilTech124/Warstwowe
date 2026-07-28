@@ -12,9 +12,15 @@ import { GutterSystem } from "@/scene/GutterSystem";
 import { StructureSystem } from "@/scene/StructureSystem";
 import { Openings } from "@/scene/Openings";
 import { DimensionOverlay } from "@/scene/DimensionOverlay";
+import { FrontProjectionSystem } from "@/scene/FrontProjectionSystem";
+import { LightingSystem } from "@/scene/LightingSystem";
 import { ViewerToolbar } from "@/scene/ViewerToolbar";
+import { SceneCapture } from "@/scene/SceneCapture";
+import { captureBridge } from "@/scene/captureBridge";
 import { materials } from "@/scene/materials";
 import { detectSceneQuality, SCENE_QUALITY, SceneEnvironment } from "@/scene/SceneEnvironment";
+import { frontProjectionDepth } from "@/scene/frontProjectionMath";
+import { roofFootprint } from "@/scene/geometry";
 
 const presetIcons = {
   large_hall: Warehouse,
@@ -37,30 +43,32 @@ function CameraRig({ config }) {
   const initialized = useRef(false);
   const animating = useRef(false);
   const { widthM, lengthM, wallHeightM } = config.dimensions;
-  const frontDistance = perspectiveFitDistance(Math.max(widthM, wallHeightM * 1.35)) * 1.28;
-  const sideDistance = perspectiveFitDistance(Math.max(lengthM, wallHeightM * 1.35)) * 1.22;
-  const boundsRadius = Math.hypot(widthM, lengthM, wallHeightM) / 2;
+  const footprint = roofFootprint(config);
+  const frontEdgeZ = footprint.centerZ + footprint.roofLength / 2;
+  const frontDistance = perspectiveFitDistance(Math.max(footprint.roofWidth, wallHeightM * 1.35)) * 1.28;
+  const sideDistance = perspectiveFitDistance(Math.max(footprint.roofLength, wallHeightM * 1.35)) * 1.22;
+  const boundsRadius = Math.hypot(footprint.roofWidth, footprint.roofLength, wallHeightM) / 2;
   const orbitDistance = (boundsRadius / Math.sin(CAMERA_VERTICAL_FOV / 2)) * 1.18;
   const orbitDirection = useMemo(() => new Vector3(1, 0.25, 1).normalize(), []);
 
   const view = useMemo(() => {
-    const target = new Vector3(0, wallHeightM * 0.52, 0);
+    const target = new Vector3(footprint.centerX, wallHeightM * 0.52, footprint.centerZ);
     if (config.cameraMode === "front") {
       return {
-        position: new Vector3(0, wallHeightM * 0.58, lengthM / 2 + frontDistance),
+        position: new Vector3(footprint.centerX, wallHeightM * 0.58, frontEdgeZ + frontDistance),
         target,
       };
     }
     if (config.cameraMode === "side") {
       return {
-        position: new Vector3(widthM / 2 + sideDistance, wallHeightM * 0.58, 0),
+        position: new Vector3(footprint.centerX + footprint.roofWidth / 2 + sideDistance, wallHeightM * 0.58, footprint.centerZ),
         target,
       };
     }
     if (config.cameraMode === "top") {
       return {
-        position: new Vector3(0.001, perspectiveFitDistance(Math.max(widthM, lengthM)) * 1.18, 0.001),
-        target: new Vector3(0, 0, 0),
+        position: new Vector3(footprint.centerX + 0.001, perspectiveFitDistance(Math.max(footprint.roofWidth, footprint.roofLength)) * 1.18, footprint.centerZ + 0.001),
+        target: new Vector3(footprint.centerX, 0, footprint.centerZ),
       };
     }
     if (config.cameraMode === "interior") {
@@ -82,6 +90,11 @@ function CameraRig({ config }) {
   }, [
     config.cameraMode,
     frontDistance,
+    frontEdgeZ,
+    footprint.centerX,
+    footprint.centerZ,
+    footprint.roofLength,
+    footprint.roofWidth,
     lengthM,
     orbitDirection,
     orbitDistance,
@@ -105,8 +118,18 @@ function CameraRig({ config }) {
     animating.current = true;
   }, [camera, view]);
 
+  // Rejestracja kontrolek, żeby generator PDF mógł je zamrozić na czas zrzutu.
+  useEffect(() => {
+    captureBridge.controls = controlsRef.current;
+    return () => {
+      if (captureBridge.controls === controlsRef.current) captureBridge.controls = null;
+    };
+  });
+
   useFrame((_, delta) => {
     const controls = controlsRef.current;
+    // Podczas zrzutu kamerę ustawia captureViews — rig nie może jej cofać.
+    if (captureBridge.capturing) return;
     if (!controls || !animating.current) return;
     const alpha = 1 - Math.exp(-5.4 * delta);
     camera.position.lerp(desiredPosition.current, alpha);
@@ -151,10 +174,12 @@ function Ground({ config }) {
 
 function FoundationSlab({ config }) {
   const { widthM, lengthM } = config.dimensions;
+  const projectionDepthM = frontProjectionDepth(config);
   const overhang = 0.35;
   const thickness = 0.18;
   const slabWidth = widthM + overhang * 2;
-  const slabLength = lengthM + overhang * 2;
+  const slabLength = lengthM + overhang * 2 + projectionDepthM;
+  const centerZ = projectionDepthM / 2;
   const jointWidth = 0.018;
   const centerY = -thickness / 2;
   const topY = 0.012;
@@ -162,7 +187,7 @@ function FoundationSlab({ config }) {
   const jointCountZ = Math.max(0, Math.floor(slabLength / 4));
 
   return (
-    <group name="foundation-slab">
+    <group name="foundation-slab" position={[0, 0, centerZ]}>
       <RoundedBox position={[0, centerY, 0]} args={[slabWidth, thickness, slabLength]} radius={0.045} smoothness={3} material={materials.concrete} castShadow receiveShadow />
       <mesh position={[0, centerY - 0.005, slabLength / 2 + 0.002]} material={materials.concreteSide} receiveShadow>
         <boxGeometry args={[slabWidth - 0.08, thickness * 0.82, 0.022]} />
@@ -196,7 +221,7 @@ function FoundationSlab({ config }) {
   );
 }
 
-function GarageModel({ config, quality }) {
+function GarageModel({ config, quality, nightPreview }) {
   const showSkin = config.viewMode === "full";
 
   return (
@@ -204,11 +229,13 @@ function GarageModel({ config, quality }) {
       <Ground config={config} />
       <FoundationSlab config={config} />
       <StructureSystem config={config} />
-      {showSkin && <WallPanels config={config} />}
+      {showSkin && <WallPanels config={config} quality={quality} />}
       {showSkin && <Openings config={config} quality={quality} />}
-      {showSkin && <RoofSystem config={config} />}
-      {showSkin && <FlashingSystem config={config} />}
-      {showSkin && <GutterSystem config={config} />}
+      {showSkin && <RoofSystem config={config} quality={quality} />}
+      {showSkin && <FrontProjectionSystem config={config} quality={quality} />}
+      {showSkin && <FlashingSystem config={config} quality={quality} />}
+      {showSkin && <GutterSystem config={config} quality={quality} />}
+      {showSkin && <LightingSystem config={config} quality={quality} nightPreview={nightPreview} />}
       {config.showDimensions && <DimensionOverlay config={config} />}
     </group>
   );
@@ -225,6 +252,7 @@ function Loader() {
 function SceneStatus({ config }) {
   const area = (config.dimensions.widthM * config.dimensions.lengthM).toFixed(1);
   const preset = PRESETS[config.preset]?.label || "Konfiguracja";
+  const projectionDepthM = frontProjectionDepth(config);
 
   return (
     <div className="scene-status">
@@ -233,6 +261,7 @@ function SceneStatus({ config }) {
       <span>{config.dimensions.widthM.toFixed(1)} x {config.dimensions.lengthM.toFixed(1)} x {config.dimensions.wallHeightM.toFixed(1)} m</span>
       <span>{area} m2</span>
       <span>Dach {config.roof.pitchPercent}%</span>
+      {projectionDepthM > 0 && <span>Wypust {projectionDepthM.toFixed(2)} m</span>}
     </div>
   );
 }
@@ -259,7 +288,10 @@ function ViewerPresetOverlay() {
 
 export function GarageScene() {
   const config = useConfiguratorStore((state) => state.config);
+  const activeTab = useConfiguratorStore((state) => state.ui.activeTab);
+  const lightingPreviewSuppressed = useConfiguratorStore((state) => state.ui.lightingPreviewSuppressed);
   const [quality, setQuality] = useState(detectSceneQuality);
+  const nightPreview = activeTab === "lighting" && !lightingPreviewSuppressed;
   const qualityProfile = SCENE_QUALITY[quality];
   const contactShadowKey = [
     quality,
@@ -267,8 +299,10 @@ export function GarageScene() {
     config.dimensions.widthM,
     config.dimensions.lengthM,
     config.dimensions.wallHeightM,
+    frontProjectionDepth(config),
     config.openings.map((opening) => `${opening.id}-${opening.openMode || (opening.open ? "open" : "closed")}`).join("-"),
   ].join(":");
+  const footprint = roofFootprint(config);
 
   return (
     <div className="scene-shell">
@@ -278,7 +312,6 @@ export function GarageScene() {
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
         onCreated={(state) => {
           state.gl.localClippingEnabled = true;
-          if (typeof window !== "undefined") window.__r3fState = state;
         }}
       >
         <PerspectiveCamera makeDefault fov={38} near={0.08} far={320} position={[7, 5, 8]} />
@@ -292,15 +325,17 @@ export function GarageScene() {
             dimensions={config.dimensions}
             cameraMode={config.cameraMode}
             quality={quality}
+            nightPreview={nightPreview}
           />
-          <GarageModel config={config} quality={quality} />
+          <GarageModel config={config} quality={quality} nightPreview={nightPreview} />
+          <SceneCapture />
         </Suspense>
         <ContactShadows
           key={contactShadowKey}
           position={[0, 0.018, 0]}
           opacity={qualityProfile.contactShadowOpacity}
           blur={qualityProfile.contactShadowBlur}
-          scale={Math.max(config.dimensions.widthM, config.dimensions.lengthM) * 1.55}
+          scale={Math.max(footprint.roofWidth, footprint.roofLength) * 1.55}
           far={Math.max(8, config.dimensions.wallHeightM * 2.6)}
           resolution={qualityProfile.contactShadowResolution}
           frames={quality === "high" ? 6 : 2}

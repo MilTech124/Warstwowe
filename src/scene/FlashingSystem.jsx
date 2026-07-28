@@ -1,16 +1,21 @@
 import { FLASHING_COLORS, getRoofCladdingColor } from "@/config/catalog";
 import { roofFootprint, roofMetrics, slopedRoofLength, wallTopHeightAt } from "@/scene/geometry";
 import { paintedMetalProps } from "@/scene/materials";
+import { frontProjectionDepth, roofSurfaceYAt } from "@/scene/frontProjectionMath";
 
 const SHEET_THICKNESS = 0.012;
 const ROOF_EDGE_FLASHING_Y = 0.07;
+// Wspolna glebokosc lica obrobek krawedzi dachu. Pas okapowy i wiatrownica
+// MUSZA schodzic rownie gleboko, inaczej ich dolne krawedzie nie spinaja sie
+// w narozniku dachu.
+const ROOF_EDGE_FACE_DEPTH = 1.7;
 
-function flashingMaterial(config) {
-  const color = config.flashings.color === "roof_match"
-    ? getRoofCladdingColor(config.cladding).hex
-    : FLASHING_COLORS[config.flashings.color]?.hex || getRoofCladdingColor(config.cladding).hex;
+function flashingMaterial(config, quality) {
+  const finish = config.flashings.color === "roof_match"
+    ? getRoofCladdingColor(config.cladding)
+    : FLASHING_COLORS[config.flashings.color] || getRoofCladdingColor(config.cladding);
 
-  return paintedMetalProps(color, "flashing");
+  return paintedMetalProps(finish, "flashing", { quality, projection: "world" });
 }
 
 function Sheet({ name, position, rotation = [0, 0, 0], args, material }) {
@@ -25,20 +30,21 @@ function Sheet({ name, position, rotation = [0, 0, 0], args, material }) {
 // Listwa cokolowa u podstawy plyt, przerwana na bramach i drzwiach.
 function BaseFlashings({ config, material }) {
   const { widthM, lengthM } = config.dimensions;
+  const projectionDepthM = frontProjectionDepth(config);
   const height = config.flashings.package === "premium" ? 0.12 : 0.09;
   const offset = 0.016;
   const dripDepth = 0.024;
 
   const sides = [
-    { side: "front", length: widthM, sign: 1 },
-    { side: "back", length: widthM, sign: -1 },
-    { side: "left", length: lengthM, sign: -1 },
-    { side: "right", length: lengthM, sign: 1 },
+    { side: "front", start: -widthM / 2, end: widthM / 2, sign: 1 },
+    { side: "back", start: -widthM / 2, end: widthM / 2, sign: -1 },
+    { side: "left", start: -lengthM / 2, end: lengthM / 2 + projectionDepthM, sign: -1 },
+    { side: "right", start: -lengthM / 2, end: lengthM / 2 + projectionDepthM, sign: 1 },
   ];
 
   return (
     <group name="base-flashings">
-      {sides.map(({ side, length, sign }) => {
+      {sides.map(({ side, start, end, sign }) => {
         const cuts = config.openings
           .filter((opening) => opening.wall === side && opening.sillM < 0.12)
           .map((opening) => {
@@ -49,12 +55,12 @@ function BaseFlashings({ config, material }) {
           .sort((a, b) => a[0] - b[0]);
 
         const segments = [];
-        let cursor = -length / 2;
+        let cursor = start;
         cuts.forEach(([cutStart, cutEnd]) => {
           if (cutStart - cursor > 0.05) segments.push([cursor, cutStart]);
           cursor = Math.max(cursor, cutEnd);
         });
-        if (length / 2 - cursor > 0.05) segments.push([cursor, length / 2]);
+        if (end - cursor > 0.05) segments.push([cursor, end]);
 
         return segments.map(([segmentStart, segmentEnd], index) => {
           const center = (segmentStart + segmentEnd) / 2;
@@ -88,10 +94,12 @@ function CornerFlashings({ config, material, width }) {
   if (!config.flashings.corners) return null;
 
   const { widthM, lengthM } = config.dimensions;
+  const projectionDepthM = frontProjectionDepth(config);
+  const frontZ = lengthM / 2 + projectionDepthM;
   const leg = width;
   const corners = [
-    { name: "front-left", x: -widthM / 2 - 0.018, z: lengthM / 2 + 0.018, xIn: 1, zIn: -1, sides: ["front", "left"], offsets: [-widthM / 2, lengthM / 2] },
-    { name: "front-right", x: widthM / 2 + 0.018, z: lengthM / 2 + 0.018, xIn: -1, zIn: -1, sides: ["front", "right"], offsets: [widthM / 2, lengthM / 2] },
+    { name: "front-left", x: -widthM / 2 - 0.018, z: frontZ + 0.018, xIn: 1, zIn: -1, sides: ["front", "left"], offsets: [-widthM / 2, lengthM / 2], projectionX: -widthM / 2 },
+    { name: "front-right", x: widthM / 2 + 0.018, z: frontZ + 0.018, xIn: -1, zIn: -1, sides: ["front", "right"], offsets: [widthM / 2, lengthM / 2], projectionX: widthM / 2 },
     { name: "back-left", x: -widthM / 2 - 0.018, z: -lengthM / 2 - 0.018, xIn: 1, zIn: 1, sides: ["back", "left"], offsets: [-widthM / 2, -lengthM / 2] },
     { name: "back-right", x: widthM / 2 + 0.018, z: -lengthM / 2 - 0.018, xIn: -1, zIn: 1, sides: ["back", "right"], offsets: [widthM / 2, -lengthM / 2] },
   ];
@@ -99,10 +107,12 @@ function CornerFlashings({ config, material, width }) {
   return (
     <group name="corner-flashings">
       {corners.map((corner) => {
-        const height = Math.max(
-          wallTopHeightAt(corner.sides[0], corner.offsets[0], config),
-          wallTopHeightAt(corner.sides[1], corner.offsets[1], config),
-        );
+        const height = corner.projectionX !== undefined && projectionDepthM > 0
+          ? roofSurfaceYAt(corner.projectionX, frontZ, config) - 0.035
+          : Math.max(
+            wallTopHeightAt(corner.sides[0], corner.offsets[0], config),
+            wallTopHeightAt(corner.sides[1], corner.offsets[1], config),
+          );
         return (
           <group key={corner.name} name={`corner-flashing-${corner.name}`}>
             <Sheet name={`${corner.name}-wall-face-return`} position={[corner.x + (corner.xIn * leg) / 2, height / 2, corner.z]} args={[leg, height, SHEET_THICKNESS]} material={material} />
@@ -117,7 +127,7 @@ function CornerFlashings({ config, material, width }) {
 function EaveFlashing({ name, side, width, length, material, edgeWidth, inset = 0 }) {
   const direction = side === "front" ? 1 : -1;
   const lip = edgeWidth * 0.92;
-  const apron = edgeWidth * 1.7;
+  const apron = edgeWidth * ROOF_EDGE_FACE_DEPTH;
   const hem = edgeWidth * 0.28;
   const clearWidth = Math.max(0.2, width - inset * 2);
   const y = ROOF_EDGE_FLASHING_Y;
@@ -135,7 +145,7 @@ function EaveFlashing({ name, side, width, length, material, edgeWidth, inset = 
 function VergeFlashing({ name, side, width, length, material, edgeWidth, inset = 0 }) {
   const direction = side === "right" ? 1 : -1;
   const topLeg = edgeWidth * 0.92;
-  const face = edgeWidth * 1.95;
+  const face = edgeWidth * ROOF_EDGE_FACE_DEPTH;
   const returnLip = edgeWidth * 0.34;
   const clearLength = Math.max(0.2, length - inset * 2);
   const y = ROOF_EDGE_FLASHING_Y;
@@ -267,12 +277,12 @@ function RoofFlashings({ config, material, edgeWidth }) {
   );
 }
 
-export function FlashingSystem({ config }) {
+export function FlashingSystem({ config, quality = "high" }) {
   if (!config.flashings?.enabled || config.viewMode === "structure") {
     return null;
   }
 
-  const material = flashingMaterial(config);
+  const material = flashingMaterial(config, quality);
   // Smuklejsze obrobki krawedzi dachu (okap, wiatrownice, kalenica skaluja sie
   // z edgeWidth, wiec zmniejszamy je proporcjonalnie i spojnie).
   const edgeWidth = config.flashings.package === "premium" ? 0.14 : 0.10;

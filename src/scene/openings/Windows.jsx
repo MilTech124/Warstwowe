@@ -175,8 +175,13 @@ export function WindowLeaf({ opening, quality = "high" }) {
   const frameColor = getWindowFrameColor(opening);
   const glass = getWindowGlass(opening);
   const frameMaterial = useMemo(
-    () => getPaintedMetalMaterial(frameColor.hex, "flashing", { roughness: 0.3, clearcoat: 0.16 }),
-    [frameColor.hex],
+    () => getPaintedMetalMaterial(frameColor, "frame", {
+      quality,
+      projection: "local",
+      roughness: 0.3,
+      clearcoat: 0.16,
+    }),
+    [frameColor, quality],
   );
   const glassMaterial = useMemo(
     () => getGlassMaterial(glass),

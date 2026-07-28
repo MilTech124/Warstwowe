@@ -32,7 +32,7 @@ export function Select({ children, ...props }) {
   );
 }
 
-export function Slider({ min, max, step = 0.1, value, onChange }) {
+export function Slider({ min, max, step = 0.1, value, onChange, ...props }) {
   return (
     <input
       className="h-2 w-full cursor-pointer accent-emerald-600"
@@ -42,6 +42,7 @@ export function Slider({ min, max, step = 0.1, value, onChange }) {
       step={step}
       value={value}
       onChange={(event) => onChange(Number(event.target.value))}
+      {...props}
     />
   );
 }

@@ -23,6 +23,7 @@ const STRAP_SPACING = 1.4;           // rozstaw opasek rury [m]
 const DISCHARGE_CLEARANCE = 0.28;    // wysokosc dolnego kolana nad gruntem [m]
 const DISCHARGE_PROJECTION = 0.17;   // odsuniecie wyrzutnika od sciany [m]
 const DOWNSPOUT_INSET = 0.2;         // odsuniecie rury od naroznika [m]
+const GUTTER_MAX_TOP_DROP = 0.05;    // max. zejscie gory rynny pod krawedz okapu [m]
 const LONG_RUN_THRESHOLD = 11;       // dlugosc rynny → dodatkowa rura srodkowa [m]
 const SCREW_RADIUS = 0.005;          // promien glowki sruby [m]
 
@@ -35,16 +36,20 @@ const UP = new Vector3(0, 1, 0);
 function resolveGutterColor(config) {
   const key = config.gutters?.color;
   if (!key || key === "roof_match") {
-    return getRoofCladdingColor(config.cladding).hex;
+    return getRoofCladdingColor(config.cladding);
   }
-  return GUTTER_COLORS[key]?.hex || getRoofCladdingColor(config.cladding).hex;
+  return GUTTER_COLORS[key] || getRoofCladdingColor(config.cladding);
 }
 
 // Rynna half-round jest plaszczem otwartym (nie zamknieta bryla), a kamera
 // czesto ogląda ja od gory/od wewnatrz otworu — bez DoubleSide tylna strona
 // (widziana od strony wnetrza rynny) byla by niewidoczna (efekt przezroczystosci).
-function gutterMaterial(config) {
-  return getPaintedMetalMaterial(resolveGutterColor(config), "flashing", { side: DoubleSide });
+function gutterMaterial(config, quality) {
+  return getPaintedMetalMaterial(resolveGutterColor(config), "gutter", {
+    quality,
+    projection: "world",
+    side: DoubleSide,
+  });
 }
 
 const gutterInteriorMaterial = materials.trim.clone();
@@ -72,12 +77,48 @@ function troughQuaternion(outward) {
   return new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(UP, yAxis, inward));
 }
 
+function openingWallCoord(opening) {
+  if (opening.wall === "front") return opening.offsetM;
+  if (opening.wall === "back") return -opening.offsetM;
+  if (opening.wall === "left") return -opening.offsetM;
+  return opening.offsetM;
+}
+
+function blocksDownspout(opening, along, clearance = 0.45) {
+  if (opening.kind !== "gate" && opening.kind !== "door") return false;
+  if (opening.sillM > 0.15) return false;
+  return Math.abs(along - openingWallCoord(opening)) <= opening.widthM / 2 + clearance;
+}
+
+function avoidOpeningForDownspout(along, config, wall, buildingHalf) {
+  const limit = Math.max(0.1, buildingHalf - DOWNSPOUT_INSET);
+  const wallOpenings = config.openings?.filter((opening) => opening.wall === wall) || [];
+  const available = (candidate) =>
+    candidate >= -limit &&
+    candidate <= limit &&
+    !wallOpenings.some((opening) => blocksDownspout(opening, candidate));
+
+  if (!wall || available(along)) return along;
+
+  const step = 0.25;
+  const maxSteps = Math.ceil(Math.min(3, limit * 2) / step);
+  for (let index = 1; index <= maxSteps; index += 1) {
+    const shift = index * step;
+    const left = along - shift;
+    const right = along + shift;
+    if (available(left)) return left;
+    if (available(right)) return right;
+  }
+
+  return null;
+}
+
 // Buduje opis biegu rynny wzdluz zwyklego (zewnetrznego) okapu.
 //   eaveA/eaveB   - narozniki krawedzi kapania (powierzchnia polaci)
 //   outward       - poziomy kierunek „od budynku"
 //   wallLineConst - wspolrzedna lica sciany (z dla axis "x", x dla axis "z")
 //   buildingHalf  - polowa dlugosci sciany wzdluz osi biegu
-function makeEdgeRun({ eaveA, eaveB, outward, axis, wallLineConst, buildingHalf, radius, dsRadius, flashingApron }) {
+function makeEdgeRun({ eaveA, eaveB, outward, axis, wall, wallLineConst, buildingHalf, radius, dsRadius, flashingApron, config }) {
   const outShift = radius * 0.45; // wysuniecie na zewnatrz, by rynna byla widoczna spod okapu
 
   // Domyslnie rynna wisi tuz pod krawedzia kapania okapu.
@@ -89,7 +130,9 @@ function makeEdgeRun({ eaveA, eaveB, outward, axis, wallLineConst, buildingHalf,
   if (flashingApron != null) {
     const fasciaBottomY = eaveA.y + 0.036 - flashingApron; // dolny brzeg pasa okapowego
     const hangAxis = fasciaBottomY + 0.02 - radius; // gora rynny ~2 cm ponizej dolu fartucha
-    const lowestAxis = eaveA.y - 0.32 - radius; // limit dla bardzo glebokiego fartucha (premium)
+    // Rynna nie moze odjechac zbyt nisko od dachu — gora rynny najwyzej
+    // GUTTER_MAX_TOP_DROP ponizej krawedzi okapu.
+    const lowestAxis = eaveA.y - GUTTER_MAX_TOP_DROP - radius;
     axisY = Math.min(axisY, Math.max(hangAxis, lowestAxis));
   }
 
@@ -108,10 +151,16 @@ function makeEdgeRun({ eaveA, eaveB, outward, axis, wallLineConst, buildingHalf,
   // sie od tylu budynku (front z brama pozostaje czysty), wiec dla tych biegow
   // pomijamy koniec od strony frontu (+Z).
   const restrictToBack = axis === "z";
-  const alongs = restrictToBack
+  const baseAlongs = restrictToBack
     ? (length >= LONG_RUN_THRESHOLD ? [-alongMax, 0] : [-alongMax])
     : [-alongMax, alongMax];
-  if (!restrictToBack && length >= LONG_RUN_THRESHOLD) alongs.push(0);
+  if (!restrictToBack && length >= LONG_RUN_THRESHOLD) baseAlongs.push(0);
+  const alongs = [...new Set(
+    baseAlongs
+      .map((along) => avoidOpeningForDownspout(along, config, wall, buildingHalf))
+      .filter((along) => along != null)
+      .map((along) => Number(along.toFixed(3))),
+  )];
 
   const outwardArr = outward.toArray();
   const downspouts = alongs.map((along) =>
@@ -128,7 +177,7 @@ function makeEdgeRun({ eaveA, eaveB, outward, axis, wallLineConst, buildingHalf,
 
 // Buduje opis rynny dolinowej (dach korytkowy / „odwrocony dwuspad").
 // Rynna biegnie wzdluz X w dolinie (z=0), woda splywa do rur na scianach bocznych.
-function makeValleyRun({ valleyA, valleyB, radius, dsRadius, widthM }) {
+function makeValleyRun({ valleyA, valleyB, radius, dsRadius, widthM, config }) {
   const drop = radius + 0.02;
   const mid = valleyA.clone().add(valleyB).multiplyScalar(0.5).add(new Vector3(0, -drop, 0));
   const length = valleyA.distanceTo(valleyB);
@@ -136,12 +185,17 @@ function makeValleyRun({ valleyA, valleyB, radius, dsRadius, widthM }) {
   const z0 = mid.z;
 
   // Rury na scianach bocznych, na koncach doliny.
-  const downspouts = [-1, 1].map((s) => ({
-    outlet: [s * (widthM / 2 - DOWNSPOUT_INSET), mid.y, z0],
-    wallX: s * (widthM / 2) + s * gap,
-    wallZ: z0,
-    outward: [s, 0, 0],
-  }));
+  const downspouts = [-1, 1].map((s) => {
+    const wall = s < 0 ? "left" : "right";
+    const along = avoidOpeningForDownspout(z0, config, wall, widthM / 2);
+    if (along == null) return null;
+    return {
+      outlet: [s * (widthM / 2 - DOWNSPOUT_INSET), mid.y, along],
+      wallX: s * (widthM / 2) + s * gap,
+      wallZ: along,
+      outward: [s, 0, 0],
+    };
+  }).filter(Boolean);
 
   return {
     // strona „dachu" nieokreslona (dolina po obu stronach) — bierzemy +Z.
@@ -171,7 +225,7 @@ function eaveRuns(config) {
   const slab = (p, euler) =>
     new Matrix4().makeRotationFromEuler(new Euler(...euler)).setPosition(new Vector3(...p));
   const corner = (m, x, y, z) => new Vector3(x, y, z).applyMatrix4(m);
-  const edge = (props) => makeEdgeRun({ ...props, radius, dsRadius, flashingApron });
+  const edge = (props) => makeEdgeRun({ ...props, radius, dsRadius, flashingApron, config });
 
   if (type === "single_back" || type === "single_front") {
     const back = type === "single_back";
@@ -183,6 +237,7 @@ function eaveRuns(config) {
     return [
       edge({
         axis: "x",
+        wall: back ? "back" : "front",
         eaveA: corner(m, -roofWidth / 2, ROOF_PANEL_TOP, (zSign * roofLength) / 2),
         eaveB: corner(m, roofWidth / 2, ROOF_PANEL_TOP, (zSign * roofLength) / 2),
         outward: new Vector3(0, 0, zSign),
@@ -202,6 +257,7 @@ function eaveRuns(config) {
     return [
       edge({
         axis: "z",
+        wall: left ? "left" : "right",
         eaveA: corner(m, (xSign * roofWidth) / 2, ROOF_PANEL_TOP, -roofLength / 2),
         eaveB: corner(m, (xSign * roofWidth) / 2, ROOF_PANEL_TOP, roofLength / 2),
         outward: new Vector3(xSign, 0, 0),
@@ -221,6 +277,7 @@ function eaveRuns(config) {
     return [
       edge({
         axis: "z",
+        wall: "right",
         eaveA: corner(mR, rW / 2, ROOF_PANEL_TOP, -roofLength / 2),
         eaveB: corner(mR, rW / 2, ROOF_PANEL_TOP, roofLength / 2),
         outward: new Vector3(1, 0, 0),
@@ -229,6 +286,7 @@ function eaveRuns(config) {
       }),
       edge({
         axis: "z",
+        wall: "left",
         eaveA: corner(mL, -lW / 2, ROOF_PANEL_TOP, -roofLength / 2),
         eaveB: corner(mL, -lW / 2, ROOF_PANEL_TOP, roofLength / 2),
         outward: new Vector3(-1, 0, 0),
@@ -251,6 +309,7 @@ function eaveRuns(config) {
         radius,
         dsRadius,
         widthM,
+        config,
       }),
     ];
   }
@@ -516,12 +575,12 @@ function GutterRun({ run, config, material, hardwareMat }) {
 // Root
 // ----------------------------------------------------------------------------
 
-export function GutterSystem({ config }) {
+export function GutterSystem({ config, quality = "high" }) {
   if (!config.gutters?.enabled || config.viewMode === "structure") {
     return null;
   }
 
-  const material = gutterMaterial(config);
+  const material = gutterMaterial(config, quality);
   const runs = eaveRuns(config);
   if (runs.length === 0) return null;
 

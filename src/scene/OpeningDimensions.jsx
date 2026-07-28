@@ -1,13 +1,12 @@
 import { Html } from "@react-three/drei";
 import { Beam } from "@/scene/Beam";
 import { materials } from "@/scene/materials";
-import { roofOpeningTransform, wallOpeningTransform, wallTopHeightAt } from "@/scene/geometry";
+import { roofOpeningTransform, wallOpeningAxisCenter, wallOpeningTransform, wallTopHeightAt } from "@/scene/geometry";
 
 // Grubość elementów miarki — wystarczająco widoczna z typowej odległości kamery.
 const LINE = 0.016;
 const EXT = 0.009;
-const ARROW_L = 0.085;
-const ARROW_HALF = 0.42; // rad (~24°)
+const CAP = 0.12;
 // Offset wzdłuż normali ściany — miarka przed licem, bez z-fightowania z panelem.
 const FACE_Z = 0.07;
 
@@ -19,38 +18,23 @@ function DimTag({ position, text }) {
   );
 }
 
-// Dwa groty strzałki w wierzchołku `apex`; sign +1 → grot wskazuje +axis, -1 → -axis.
-function ArrowHead({ axis, apex, sign, color }) {
-  const cos = Math.cos(ARROW_HALF);
-  const sin = Math.sin(ARROW_HALF);
-  let p1;
-  let p2;
+// Prosta koncowka linii wymiarowej, bez grotow.
+function EndCap({ axis, point, color }) {
   if (axis === "x") {
-    const bx = apex[0] - sign * ARROW_L * cos;
-    p1 = [bx, apex[1] + ARROW_L * sin, apex[2]];
-    p2 = [bx, apex[1] - ARROW_L * sin, apex[2]];
-  } else {
-    const by = apex[1] - sign * ARROW_L * cos;
-    p1 = [apex[0] + ARROW_L * sin, by, apex[2]];
-    p2 = [apex[0] - ARROW_L * sin, by, apex[2]];
+    return <Beam start={[point[0], point[1] - CAP / 2, point[2]]} end={[point[0], point[1] + CAP / 2, point[2]]} size={EXT} material={color} />;
   }
-  return (
-    <group>
-      <Beam start={apex} end={p1} size={LINE} material={color} />
-      <Beam start={apex} end={p2} size={LINE} material={color} />
-    </group>
-  );
+  return <Beam start={[point[0] - CAP / 2, point[1], point[2]]} end={[point[0] + CAP / 2, point[1], point[2]]} size={EXT} material={color} />;
 }
 
-// Linia wymiarowa (pozioma dla axis "x", pionowa dla "y") z grotami skierowanymi do środka.
+// Linia wymiarowa (pozioma dla axis "x", pionowa dla "y") z prostymi koncowkami.
 function DimLine({ axis, from, to, at, color }) {
   const a = axis === "x" ? [from, at, FACE_Z] : [at, from, FACE_Z];
   const b = axis === "x" ? [to, at, FACE_Z] : [at, to, FACE_Z];
   return (
     <group>
       <Beam start={a} end={b} size={LINE} material={color} />
-      <ArrowHead axis={axis} apex={a} sign={+1} color={color} />
-      <ArrowHead axis={axis} apex={b} sign={-1} color={color} />
+      <EndCap axis={axis} point={a} color={color} />
+      <EndCap axis={axis} point={b} color={color} />
     </group>
   );
 }
@@ -65,19 +49,21 @@ function OpeningDim({ opening, config, wallSpan }) {
   const h = opening.heightM;
   const sill = opening.sillM || 0;
   const color = materials.dimension;
+  const axisCenter = wallOpeningAxisCenter(opening, config.dimensions);
 
   // Układ lokalny otworu: środek = (0,0,0), X = wzdłuż ściany, Y = pion, Z = normala.
   const leftX = -w / 2;
   const rightX = w / 2;
   const bottomY = -h / 2;
   const topY = h / 2;
+  const localAxisCenter = opening.wall === "back" || opening.wall === "right" ? -axisCenter : axisCenter;
 
   // Krawędzie ściany w układzie lokalnym otworu (środek ściany = x = -offsetM).
-  const wallLeftX = -wallSpan / 2 - opening.offsetM;
-  const wallRightX = wallSpan / 2 - opening.offsetM;
+  const wallLeftX = -wallSpan / 2 - localAxisCenter;
+  const wallRightX = wallSpan / 2 - localAxisCenter;
 
   // Dół i góra ściany (góra uwzględnia skos dachu) w układzie lokalnym otworu.
-  const wallTopY = wallTopHeightAt(opening.wall, opening.offsetM, config) - (sill + h / 2);
+  const wallTopY = wallTopHeightAt(opening.wall, axisCenter, config) - (sill + h / 2);
   const wallBottomY = -(sill + h / 2);
 
   const showSill = sill > 0.001;

@@ -3,6 +3,7 @@ import { Color, Plane, Vector3 } from "three";
 import { getCladdingColor, getCladdingProfile, getWallPanelLengthM, WALL_PANEL_DIMENSIONS, WALL_PROFILES } from "@/config/catalog";
 import { materialProps, materials, paintedMetalProps } from "@/scene/materials";
 import { wallTopHeightAt } from "@/scene/geometry";
+import { frontProjectionDepth, roofSurfaceYAt } from "@/scene/frontProjectionMath";
 import { GATE_OPENING_CLEARANCE_M } from "@/scene/openings/gateGeometry";
 
 const ROOF_CLEARANCE_M = 0.035;
@@ -10,6 +11,7 @@ const HORIZONTAL_PANEL_HEIGHT_M = WALL_PANEL_DIMENSIONS.moduleWidthM;
 const JOINT_FLASHING_WIDTH_M = 0.12;
 const JOINT_FLASHING_DEPTH_M = 0.008;
 const JOINT_FLASHING_OFFSET_M = JOINT_FLASHING_DEPTH_M / 2 + 0.001;
+const FRONT_WALL_CORNER_INSET_M = 0.04;
 
 function PanelInstance({ scene, position, rotation, scale, material, clippingPlane }) {
   return (
@@ -69,7 +71,7 @@ function wallSegments(length, includeRidge = false) {
   });
 }
 
-function horizontalPanelSegments(length, maxPanelLengthM) {
+function horizontalPanelSegments(length, maxPanelLengthM, axisStart = -length / 2) {
   const makeRun = (start, end) => {
     const runLength = Math.abs(end - start);
     const count = Math.max(1, Math.ceil(runLength / maxPanelLengthM));
@@ -87,7 +89,7 @@ function horizontalPanelSegments(length, maxPanelLengthM) {
     });
   };
 
-  return makeRun(-length / 2, length / 2);
+  return makeRun(axisStart, axisStart + length);
 }
 
 // Otwory w ukladzie osi swiata danej sciany (x dla przod/tyl, z dla boków).
@@ -143,6 +145,16 @@ function wallAxisLength(side, config) {
 }
 
 function wallHeightAtWorldAxis(side, axisValue, config) {
+  if (
+    (side === "left" || side === "right")
+    && frontProjectionDepth(config) > 0
+    && axisValue > config.dimensions.lengthM / 2
+  ) {
+    const x = side === "left"
+      ? -config.dimensions.widthM / 2
+      : config.dimensions.widthM / 2;
+    return roofSurfaceYAt(x, axisValue, config) - ROOF_CLEARANCE_M;
+  }
   return wallTopHeightAt(side, axisValue, config) - ROOF_CLEARANCE_M;
 }
 
@@ -233,9 +245,12 @@ function WallCoreRun({ length, side, config }) {
 
 function WallCore({ config }) {
   const { widthM, lengthM } = config.dimensions;
+  const frontInsetM = frontProjectionDepth(config) > 0
+    ? FRONT_WALL_CORNER_INSET_M
+    : 0;
   return (
     <group name="pir-wall-core">
-      <WallCoreRun length={widthM} side="front" config={config} />
+      <WallCoreRun length={widthM - frontInsetM * 2} side="front" config={config} />
       <WallCoreRun length={widthM} side="back" config={config} />
       <WallCoreRun length={lengthM} side="left" config={config} />
       <WallCoreRun length={lengthM} side="right" config={config} />
@@ -258,13 +273,17 @@ function panelTransform(side, axisStart, rowCenter, config) {
   return { position: [widthM / 2, rowCenter, axisStart], rotation: [0, Math.PI / 2, Math.PI / 2] };
 }
 
-function HorizontalPanelRun({ scene, length, side, config }) {
-  const panels = horizontalPanelSegments(length, getWallPanelLengthM(config.cladding));
+function HorizontalPanelRun({ scene, length, side, config, axisStart, quality }) {
+  const panels = horizontalPanelSegments(
+    length,
+    getWallPanelLengthM(config.cladding),
+    axisStart,
+  );
   const openingRects = wallOpeningRects(config, side);
   const color = getCladdingColor(config.cladding);
   const material = config.viewMode === "structure"
     ? materials.wallStructureMode
-    : paintedMetalProps(color.hex, "wall");
+    : paintedMetalProps(color, "wall", { quality, projection: "world" });
   return panels.flatMap((panel, panelIndex) => {
     const clippingPlanes = horizontalPanelCutPlanes(side, config, panel.start, panel.end);
     const panelHeight = wallMaxHeight(side, config, panel.start, panel.end);
@@ -344,11 +363,15 @@ function JointFlashing({ side, axisPosition, start, end, config, material }) {
   );
 }
 
-function PanelJointFlashings({ length, side, config }) {
-  const panels = horizontalPanelSegments(length, getWallPanelLengthM(config.cladding));
+function PanelJointFlashings({ length, side, config, axisStart, quality }) {
+  const panels = horizontalPanelSegments(
+    length,
+    getWallPanelLengthM(config.cladding),
+    axisStart,
+  );
   const joints = panels.slice(0, -1).map((panel) => panel.end);
   const color = getCladdingColor(config.cladding);
-  const material = paintedMetalProps(color.hex, "flashing");
+  const material = paintedMetalProps(color, "flashing", { quality, projection: "world" });
 
   return joints.flatMap((axisPosition, jointIndex) => {
     const height = Math.max(0, wallHeightAtWorldAxis(side, axisPosition, config));
@@ -388,16 +411,17 @@ function rowSeamTransform(side, config, intervalStart, intervalEnd, level) {
 }
 
 // Poziome zamki miedzy pasami plyt (laczenie pioro-wpust co 1 m modul).
-function PanelRowSeams({ length, side, config }) {
+function PanelRowSeams({ length, side, config, axisStart = -length / 2 }) {
   if (config.viewMode === "structure") return null;
 
   const color = getCladdingColor(config.cladding);
   const seamColor = new Color(color.hex).lerp(new Color("#0d1218"), 0.45);
   const openingRects = wallOpeningRects(config, side);
-  const maxTop = wallMaxHeight(side, config);
+  const axisEnd = axisStart + length;
+  const maxTop = wallMaxHeight(side, config, axisStart, axisEnd);
   const baseIntervals = sideNeedsRidgeSplit(side, config)
-    ? [[-length / 2, 0], [0, length / 2]]
-    : [[-length / 2, length / 2]];
+    ? [[axisStart, 0], [0, axisEnd]]
+    : [[axisStart, axisEnd]];
 
   const levels = [];
   for (let level = HORIZONTAL_PANEL_HEIGHT_M; level < maxTop; level += HORIZONTAL_PANEL_HEIGHT_M) {
@@ -440,29 +464,35 @@ function PanelRowSeams({ length, side, config }) {
   );
 }
 
-export function WallPanels({ config }) {
+export function WallPanels({ config, quality = "high" }) {
   const profile = getCladdingProfile(config.cladding);
   const { scene } = useGLTF(profile.url);
   const { widthM, lengthM } = config.dimensions;
+  const projectionDepthM = frontProjectionDepth(config);
+  const sidePanelLengthM = lengthM + projectionDepthM;
+  const sidePanelStart = -lengthM / 2;
+  const frontInsetM = projectionDepthM > 0 ? FRONT_WALL_CORNER_INSET_M : 0;
+  const frontPanelLengthM = widthM - frontInsetM * 2;
+  const frontPanelStart = -widthM / 2 + frontInsetM;
 
   return (
     <group name="wall-panels">
       <WallCore config={config} />
-      <HorizontalPanelRun scene={scene} length={widthM} side="front" config={config} />
-      <HorizontalPanelRun scene={scene} length={widthM} side="back" config={config} />
-      <HorizontalPanelRun scene={scene} length={lengthM} side="left" config={config} />
-      <HorizontalPanelRun scene={scene} length={lengthM} side="right" config={config} />
+      <HorizontalPanelRun scene={scene} length={frontPanelLengthM} side="front" config={config} axisStart={frontPanelStart} quality={quality} />
+      <HorizontalPanelRun scene={scene} length={widthM} side="back" config={config} quality={quality} />
+      <HorizontalPanelRun scene={scene} length={sidePanelLengthM} side="left" config={config} axisStart={sidePanelStart} quality={quality} />
+      <HorizontalPanelRun scene={scene} length={sidePanelLengthM} side="right" config={config} axisStart={sidePanelStart} quality={quality} />
       <group name="horizontal-panel-row-seams">
-        <PanelRowSeams length={widthM} side="front" config={config} />
+        <PanelRowSeams length={frontPanelLengthM} side="front" config={config} axisStart={frontPanelStart} />
         <PanelRowSeams length={widthM} side="back" config={config} />
-        <PanelRowSeams length={lengthM} side="left" config={config} />
-        <PanelRowSeams length={lengthM} side="right" config={config} />
+        <PanelRowSeams length={sidePanelLengthM} side="left" config={config} axisStart={sidePanelStart} />
+        <PanelRowSeams length={sidePanelLengthM} side="right" config={config} axisStart={sidePanelStart} />
       </group>
       <group name="horizontal-panel-joint-flashings">
-        <PanelJointFlashings length={widthM} side="front" config={config} />
-        <PanelJointFlashings length={widthM} side="back" config={config} />
-        <PanelJointFlashings length={lengthM} side="left" config={config} />
-        <PanelJointFlashings length={lengthM} side="right" config={config} />
+        <PanelJointFlashings length={frontPanelLengthM} side="front" config={config} axisStart={frontPanelStart} quality={quality} />
+        <PanelJointFlashings length={widthM} side="back" config={config} quality={quality} />
+        <PanelJointFlashings length={sidePanelLengthM} side="left" config={config} axisStart={sidePanelStart} quality={quality} />
+        <PanelJointFlashings length={sidePanelLengthM} side="right" config={config} axisStart={sidePanelStart} quality={quality} />
       </group>
     </group>
   );

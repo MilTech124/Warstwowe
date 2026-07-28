@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Environment, useTexture } from "@react-three/drei";
-import { useThree } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import {
   ACESFilmicToneMapping,
+  Color,
   EquirectangularReflectionMapping,
   Object3D,
   PCFSoftShadowMap,
@@ -43,14 +44,25 @@ export function detectSceneQuality() {
   return compactViewport || reducedMotion || memory <= 4 || cores <= 4 ? "balanced" : "high";
 }
 
-export function SceneEnvironment({ dimensions, cameraMode, quality = "high" }) {
-  const { gl } = useThree();
+export function SceneEnvironment({ dimensions, cameraMode, quality = "high", nightPreview = false }) {
+  const { gl, scene } = useThree();
   const profile = SCENE_QUALITY[quality] || SCENE_QUALITY.high;
   const environmentTexture = useTexture("/environment/industrial-yard-day.png");
+  const hemisphereRef = useRef(null);
+  const sunRef = useRef(null);
+  const moodRef = useRef(nightPreview ? 1 : 0);
   const { widthM, lengthM, wallHeightM } = dimensions;
   const footprint = Math.max(widthM, lengthM);
   const shadowExtent = footprint * 0.72 + 4;
   const sunTarget = useMemo(() => new Object3D(), []);
+  const reducedMotion = useMemo(
+    () => typeof window !== "undefined"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    [],
+  );
+  const dayFogColor = useMemo(() => new Color("#dce4e7"), []);
+  const nightFogColor = useMemo(() => new Color("#111827"), []);
+  const moodFogColor = useMemo(() => new Color(), []);
   const sunPosition = useMemo(
     () => [
       -shadowExtent * 0.8,
@@ -69,18 +81,41 @@ export function SceneEnvironment({ dimensions, cameraMode, quality = "high" }) {
   useEffect(() => {
     gl.outputColorSpace = SRGBColorSpace;
     gl.toneMapping = ACESFilmicToneMapping;
-    gl.toneMappingExposure = cameraMode === "interior" ? 1.12 : 0.96;
     gl.shadowMap.enabled = true;
     gl.shadowMap.type = PCFSoftShadowMap;
     setSceneTextureAnisotropy(
       Math.min(profile.anisotropy, gl.capabilities.getMaxAnisotropy()),
     );
-  }, [cameraMode, gl, profile.anisotropy]);
+  }, [gl, profile.anisotropy]);
 
   useEffect(() => {
     sunTarget.position.set(0, wallHeightM * 0.38, 0);
     sunTarget.updateMatrixWorld();
   }, [sunTarget, wallHeightM]);
+
+  useFrame((_, delta) => {
+    const target = nightPreview ? 1 : 0;
+    const alpha = reducedMotion ? 1 : 1 - Math.exp(-12 * delta);
+    moodRef.current += (target - moodRef.current) * alpha;
+    const mood = moodRef.current;
+    const dayExposure = cameraMode === "interior" ? 1.12 : 0.96;
+
+    gl.toneMappingExposure = dayExposure + (0.5 - dayExposure) * mood;
+    scene.environmentIntensity = profile.environmentIntensity
+      + (0.14 - profile.environmentIntensity) * mood;
+    scene.backgroundIntensity = 0.82 + (0.1 - 0.82) * mood;
+
+    if (hemisphereRef.current) {
+      hemisphereRef.current.intensity = 0.42 + (0.08 - 0.42) * mood;
+    }
+    if (sunRef.current) {
+      sunRef.current.intensity = 2.15 + (0.16 - 2.15) * mood;
+    }
+    if (scene.fog) {
+      moodFogColor.copy(dayFogColor).lerp(nightFogColor, mood);
+      scene.fog.color.copy(moodFogColor);
+    }
+  });
 
   return (
     <>
@@ -94,8 +129,9 @@ export function SceneEnvironment({ dimensions, cameraMode, quality = "high" }) {
         environmentRotation={[0, -0.16, 0]}
       />
       <fog attach="fog" args={["#dce4e7", Math.max(48, footprint * 2.4), Math.max(125, footprint * 5.2)]} />
-      <hemisphereLight args={["#dcecff", "#827f78", 0.42]} />
+      <hemisphereLight ref={hemisphereRef} args={["#dcecff", "#827f78", 0.42]} />
       <directionalLight
+        ref={sunRef}
         position={sunPosition}
         intensity={2.15}
         color="#fff4df"

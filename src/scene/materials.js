@@ -1,14 +1,23 @@
 import {
+  AdditiveBlending,
   DataTexture,
   LinearFilter,
   LinearMipmapLinearFilter,
+  MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   NoColorSpace,
   RepeatWrapping,
+  ShaderChunk,
   SRGBColorSpace,
+  TextureLoader,
   Vector2,
 } from "three";
+import {
+  FINISH_PRESETS,
+  getFinishForRole,
+  resolveFinishMaps,
+} from "@/config/materialFinishes";
 
 /**
  * @typedef {"wall" | "roof" | "flashing" | "gate"} PaintedMetalRole
@@ -29,6 +38,135 @@ const textureRegistry = [];
 const paintedMaterialCache = new Map();
 const gateMaterialCache = new Map();
 const glassMaterialCache = new Map();
+const externalTextureCache = new Map();
+const externalTextureLoader = typeof window !== "undefined" ? new TextureLoader() : null;
+
+function findFinishByHex(hex, role) {
+  if (!hex) return getFinishForRole(null, role);
+  const normalized = String(hex).toLowerCase();
+  return Object.values(FINISH_PRESETS).find(
+    (finish) => finish.hex?.toLowerCase() === normalized && finish.allowedRoles.includes(role),
+  ) || {
+    id: `custom-${normalized}`,
+    label: normalized,
+    kind: "metal",
+    hex,
+    surfaceFamily: "matte-polyester",
+    maps: null,
+    scaleM: [0.42, 0.42],
+    grainAxis: "isotropic",
+    roughness: 0.48,
+    metalness: 0.08,
+  };
+}
+
+function normalizeFinish(finish, role) {
+  if (finish?.id) return finish;
+  if (typeof finish === "string" && FINISH_PRESETS[finish]) {
+    return getFinishForRole(finish, role);
+  }
+  return findFinishByHex(finish?.hex || finish, role);
+}
+
+function loadExternalTexture(path, color = false) {
+  if (!path || !externalTextureLoader) return null;
+  const key = `${color ? "color" : "data"}:${path}`;
+  if (!externalTextureCache.has(key)) {
+    const texture = externalTextureLoader.load(path);
+    texture.name = `finish:${path}`;
+    texture.wrapS = RepeatWrapping;
+    texture.wrapT = RepeatWrapping;
+    texture.colorSpace = color ? SRGBColorSpace : NoColorSpace;
+    texture.minFilter = LinearMipmapLinearFilter;
+    texture.magFilter = LinearFilter;
+    texture.generateMipmaps = true;
+    textureRegistry.push(texture);
+    externalTextureCache.set(key, texture);
+  }
+  return externalTextureCache.get(key);
+}
+
+function finishTextureProps(finish, quality, role) {
+  const maps = resolveFinishMaps(finish, quality, role);
+  return {
+    map: loadExternalTexture(maps.map, true) || undefined,
+    normalMap: loadExternalTexture(maps.normal, false) || undefined,
+    roughnessMap: loadExternalTexture(maps.roughness, false) || undefined,
+  };
+}
+
+function projectedShader(finish, role, projection = "world") {
+  const [scaleX = 1, scaleY = 1] = finish.scaleM || [1, 1];
+  const axis = typeof finish.grainAxis === "object" ? finish.grainAxis[role] : finish.grainAxis;
+  const rotateQuarter = finish.kind === "wood" && axis === "horizontal";
+  const shaderKey = [
+    "finish-projection-v1",
+    finish.id,
+    role,
+    projection,
+    scaleX,
+    scaleY,
+    rotateQuarter ? "r90" : "r0",
+  ].join(":");
+
+  const hook = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+varying vec3 vGarageProjectPosition;`,
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+vGarageProjectPosition = ${projection === "local"
+    ? "transformed"
+    : "( modelMatrix * vec4( transformed, 1.0 ) ).xyz"};`,
+      );
+
+    const projectionFunction = `
+varying vec3 vGarageProjectPosition;
+vec2 garageProjectedUv() {
+  vec3 projectNormal = normalize( cross( dFdx( vGarageProjectPosition ), dFdy( vGarageProjectPosition ) ) );
+  vec3 axisWeight = abs( projectNormal );
+  vec2 uv;
+  if ( axisWeight.y >= axisWeight.x && axisWeight.y >= axisWeight.z ) {
+    uv = vec2( vGarageProjectPosition.x, vGarageProjectPosition.z );
+  } else if ( axisWeight.x >= axisWeight.z ) {
+    uv = vec2( vGarageProjectPosition.z, vGarageProjectPosition.y );
+  } else {
+    uv = vec2( vGarageProjectPosition.x, vGarageProjectPosition.y );
+  }
+  uv /= vec2( ${Number(scaleX).toFixed(6)}, ${Number(scaleY).toFixed(6)} );
+  ${rotateQuarter ? "uv = vec2( uv.y, -uv.x );" : ""}
+  return uv;
+}`;
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", `#include <common>${projectionFunction}`)
+      .replace(
+        "#include <normal_fragment_begin>",
+        ShaderChunk.normal_fragment_begin.replaceAll("vNormalMapUv", "garageProjectedUv()"),
+      )
+      .replace(
+        "#include <map_fragment>",
+        ShaderChunk.map_fragment.replaceAll("vMapUv", "garageProjectedUv()"),
+      )
+      .replace(
+        "#include <normal_fragment_maps>",
+        ShaderChunk.normal_fragment_maps.replaceAll("vNormalMapUv", "garageProjectedUv()"),
+      )
+      .replace(
+        "#include <roughnessmap_fragment>",
+        ShaderChunk.roughnessmap_fragment.replaceAll("vRoughnessMapUv", "garageProjectedUv()"),
+      );
+  };
+
+  return {
+    onBeforeCompile: hook,
+    customProgramCacheKey: () => shaderKey,
+  };
+}
 
 function hashNoise(x, y, seed = 0) {
   const value = Math.sin(x * 12.9898 + y * 78.233 + seed * 37.719) * 43758.5453;
@@ -247,39 +385,73 @@ const paintedMetalProfiles = Object.freeze({
 });
 
 /** @returns {MaterialPreset} */
-export function paintedMetalProps(color, role = "wall") {
+export function paintedMetalProps(finishInput, role = "wall", options = {}) {
+  const {
+    quality = "high",
+    projection = role === "gate" || role === "door" || role === "frame" ? "local" : "world",
+    ...overrides
+  } = options;
+  const finish = normalizeFinish(finishInput, role);
   const profile = paintedMetalProfiles[role] || paintedMetalProfiles.wall;
+  const externalMaps = finishTextureProps(finish, quality, role);
+  const hasExternalMaps = externalMaps.map || externalMaps.normalMap || externalMaps.roughnessMap;
+  const shader = projectedShader(finish, role, projection);
+
   return {
-    color,
+    color: finish.kind === "wood" && externalMaps.map ? "#ffffff" : finish.hex,
     ...profile,
-    roughnessMap: metalMaps.roughnessMap,
-    normalMap: metalMaps.normalMap,
+    roughness: finish.roughness ?? profile.roughness,
+    metalness: finish.metalness ?? profile.metalness,
+    clearcoat: finish.kind === "wood" ? 0.045 : profile.clearcoat,
+    clearcoatRoughness: finish.kind === "wood" ? 0.7 : profile.clearcoatRoughness,
+    normalScale: finish.kind === "wood"
+      ? role === "wall"
+        ? new Vector2(0.035, 0.035)
+        : new Vector2(0.22, 0.22)
+      : profile.normalScale,
+    roughnessMap: externalMaps.roughnessMap || metalMaps.roughnessMap,
+    normalMap: externalMaps.normalMap || metalMaps.normalMap,
+    ...(externalMaps.map ? { map: externalMaps.map } : {}),
+    ...(hasExternalMaps || metalMaps.normalMap ? shader : {}),
+    ...overrides,
   };
 }
 
-export function getPaintedMetalMaterial(color, role = "wall", overrides = {}) {
-  const key = `${role}:${color}:${JSON.stringify(overrides)}`;
+function createPhysicalMaterial(props) {
+  const material = new MeshPhysicalMaterial(props);
+  if (props.onBeforeCompile) material.onBeforeCompile = props.onBeforeCompile;
+  if (props.customProgramCacheKey) material.customProgramCacheKey = props.customProgramCacheKey;
+  return material;
+}
+
+export function getPaintedMetalMaterial(finishInput, role = "wall", overrides = {}) {
+  const finish = normalizeFinish(finishInput, role);
+  const key = `${role}:${finish.id}:${JSON.stringify(overrides)}`;
   if (!paintedMaterialCache.has(key)) {
-    paintedMaterialCache.set(
-      key,
-      new MeshPhysicalMaterial({
-        ...paintedMetalProps(color, role),
-        ...overrides,
-      }),
-    );
+    paintedMaterialCache.set(key, createPhysicalMaterial(paintedMetalProps(finish, role, overrides)));
   }
   return paintedMaterialCache.get(key);
 }
 
-export function getWoodGateMaterial(color) {
-  return getGateSurfaceMaterial(color, "woodgrain");
+export function getWoodGateMaterial(finishInput, quality = "high") {
+  return getGateSurfaceMaterial(finishInput, "woodgrain", quality);
 }
 
-export function getGateSurfaceMaterial(color, structure = "silkline") {
+export function getFrontProjectionLiningMaterial(finish, quality = "high") {
+  return getPaintedMetalMaterial(finish || "anthracite", "soffit", {
+    quality,
+    projection: "world",
+    roughness: 0.5,
+    clearcoat: 0.055,
+    clearcoatRoughness: 0.68,
+  });
+}
+
+export function getGateSurfaceMaterial(finishInput, structure = "silkline", quality = "high") {
+  const finish = normalizeFinish(finishInput, "gate");
   const normalizedStructure = gateStructureMaps[structure] ? structure : "silkline";
-  const key = `${normalizedStructure}:${color}`;
+  const key = `${normalizedStructure}:${finish.id}:${quality}`;
   if (!gateMaterialCache.has(key)) {
-    const maps = gateStructureMaps[normalizedStructure];
     const profile = {
       woodgrain: {
         roughness: 0.64,
@@ -315,14 +487,15 @@ export function getGateSurfaceMaterial(color, structure = "silkline") {
       },
     }[normalizedStructure];
 
-    gateMaterialCache.set(
-      key,
-      new MeshPhysicalMaterial({
-        color,
-        ...profile,
-        ...maps,
-      }),
-    );
+    const finishProps = paintedMetalProps(finish, "gate", {
+      quality,
+      projection: "local",
+      ...profile,
+    });
+    if (!finishProps.map && !resolveFinishMaps(finish, quality, "gate").normal) {
+      Object.assign(finishProps, gateStructureMaps[normalizedStructure]);
+    }
+    gateMaterialCache.set(key, createPhysicalMaterial(finishProps));
   }
   return gateMaterialCache.get(key);
 }
@@ -354,7 +527,7 @@ export function getGlassMaterial({ tint, roughness, transmission }) {
 export function setSceneTextureAnisotropy(value) {
   textureRegistry.forEach((texture) => {
     texture.anisotropy = value;
-    texture.needsUpdate = true;
+    if (texture.image) texture.needsUpdate = true;
   });
 }
 
@@ -372,6 +545,8 @@ const standardMaterialKeys = [
   "alphaTest",
   "side",
   "depthWrite",
+  "onBeforeCompile",
+  "customProgramCacheKey",
 ];
 
 const physicalMaterialKeys = [
@@ -442,6 +617,36 @@ export const materials = {
     roughness: 0.46,
     metalness: 0.34,
     envMapIntensity: 0.92,
+  }),
+  lightingHousing: new MeshStandardMaterial({
+    color: "#252b31",
+    roughness: 0.38,
+    metalness: 0.72,
+    envMapIntensity: 0.96,
+  }),
+  lightingDiffuser: new MeshStandardMaterial({
+    color: "#fff7df",
+    emissive: "#fff1c2",
+    emissiveIntensity: 4.8,
+    roughness: 0.34,
+    metalness: 0,
+    toneMapped: false,
+  }),
+  lightingLed: new MeshStandardMaterial({
+    color: "#fff8e8",
+    emissive: "#fff0bd",
+    emissiveIntensity: 6.2,
+    roughness: 0.28,
+    metalness: 0,
+    toneMapped: false,
+  }),
+  lightingGlow: new MeshBasicMaterial({
+    color: "#fff1bd",
+    transparent: true,
+    opacity: 0.22,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    toneMapped: false,
   }),
   dimension: new MeshStandardMaterial({
     color: "#059669",

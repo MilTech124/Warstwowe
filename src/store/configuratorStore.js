@@ -1,94 +1,57 @@
 import { create } from "zustand";
 import {
-  DEFAULT_CLADDING_SELECTION,
   DEFAULT_DOOR_SELECTION,
   DEFAULT_GATE_SELECTION,
-  DEFAULT_ROOF_CLADDING_SELECTION,
   DEFAULT_WINDOW_SELECTION,
   PRESETS,
   getDoorModel,
+  getPresetDefaults,
+  getPresetOpenings,
   getWindowDefaultSize,
   getWindowModel,
   getWindowOrientation,
   getWindowSizeRanges,
   getWallPanelLengthM,
 } from "@/config/catalog";
+import {
+  DEFAULT_FRONT_PROJECTION,
+  FRONT_PROJECTION_FINISHES,
+  FRONT_PROJECTION_LIMITS,
+  isFrontProjectionAvailable,
+} from "@/config/frontProjection";
+import { DEFAULT_LIGHTING, normalizeLighting } from "@/config/lighting";
 import { clamp } from "@/lib/utils";
 import { roofPitchBounds } from "@/scene/geometry";
+import { DEFAULT_STRUCTURE } from "@/scene/structure/inputs";
+import { SNOW_ZONES, REINFORCEMENT_LEVELS } from "@/scene/structure/spec";
+
+const defaultPreset = getPresetDefaults("single_garage");
+
+const defaultOrder = {
+  customerName: "",
+  customerAddress: "",
+  phone: "",
+  email: "",
+  orderNo: "",
+  notes: "",
+};
 
 const defaultConfig = {
-  schemaVersion: 6,
+  schemaVersion: 11,
   preset: "single_garage",
   dimensions: { ...PRESETS.single_garage.dimensions },
   viewMode: "full",
   cameraMode: "orbit",
   showDimensions: true,
-  roof: {
-    type: "single_back",
-    pitchPercent: 7,
-    overhangM: { front: 0.2, back: 0.2, left: 0.2, right: 0.2 },
-  },
-  cladding: {
-    ...DEFAULT_CLADDING_SELECTION,
-    ...DEFAULT_ROOF_CLADDING_SELECTION,
-    wallProfile: DEFAULT_CLADDING_SELECTION.profile,
-    wallPirThicknessMm: DEFAULT_CLADDING_SELECTION.thicknessMm,
-    roofPirThicknessMm: DEFAULT_ROOF_CLADDING_SELECTION.roofThicknessMm,
-  },
-  flashings: {
-    enabled: true,
-    package: "standard",
-    color: "roof_match",
-    corners: true,
-    roofEdges: true,
-    ridge: true,
-  },
-  gutters: {
-    enabled: true,
-    color: "roof_match",
-    profile: "half_round",
-    size: 150,
-    downspoutSize: 100,
-    downspouts: true,
-    leafGuards: false,
-    package: "standard",
-  },
-  structure: {
-    visible: true,
-    mode: "visual_rules",
-  },
-  openings: [
-    {
-      id: "main-gate",
-      kind: "gate",
-      wall: "front",
-      offsetM: 0,
-      widthM: 2.5,
-      heightM: 2.25,
-      sillM: 0,
-      ...DEFAULT_GATE_SELECTION,
-    },
-    {
-      id: "service-door",
-      kind: "door",
-      wall: "right",
-      offsetM: 1.55,
-      widthM: 0.95,
-      heightM: 2.1,
-      sillM: 0,
-      ...DEFAULT_DOOR_SELECTION,
-    },
-    {
-      id: "side-window",
-      kind: "window",
-      wall: "left",
-      offsetM: -1,
-      widthM: 1.2,
-      heightM: 1,
-      sillM: 1.05,
-      ...DEFAULT_WINDOW_SELECTION,
-    },
-  ],
+  roof: defaultPreset.roof,
+  cladding: defaultPreset.cladding,
+  flashings: defaultPreset.flashings,
+  gutters: defaultPreset.gutters,
+  frontProjection: { ...DEFAULT_FRONT_PROJECTION },
+  lighting: { ...DEFAULT_LIGHTING },
+  structure: { ...DEFAULT_STRUCTURE },
+  order: defaultOrder,
+  openings: getPresetOpenings("single_garage"),
 };
 
 const OPENING_LIMITS = {
@@ -249,15 +212,36 @@ function addOpeningWithPlacement(openings, kind, dimensions) {
 
 export const useConfiguratorStore = create((set) => ({
   config: defaultConfig,
+  ui: {
+    activeTab: "body",
+    lightingPreviewSuppressed: false,
+  },
+  setActiveTab: (activeTab) =>
+    set((state) => ({
+      ui: { ...state.ui, activeTab },
+    })),
+  setLightingPreviewSuppressed: (lightingPreviewSuppressed) =>
+    set((state) => ({
+      ui: { ...state.ui, lightingPreviewSuppressed },
+    })),
   setPreset: (preset) =>
     set((state) => {
       const dimensions = { ...PRESETS[preset].dimensions };
+      const defaults = getPresetDefaults(preset);
       return {
         config: {
           ...state.config,
           preset,
           dimensions,
-          openings: fitOpeningsToDimensions(state.config.openings, dimensions),
+          roof: defaults.roof,
+          cladding: defaults.cladding,
+          flashings: defaults.flashings,
+          gutters: defaults.gutters,
+          frontProjection: { ...DEFAULT_FRONT_PROJECTION },
+          lighting: normalizeLighting(state.config.lighting, {
+            frontProjectionAvailable: false,
+          }),
+          openings: fitOpeningsToDimensions(getPresetOpenings(preset), dimensions),
         },
       };
     }),
@@ -269,6 +253,10 @@ export const useConfiguratorStore = create((set) => ({
         cameraMode: viewMode === "structure" ? "structure" : state.config.cameraMode,
       },
     })),
+  // Zmiana samego trybu widoku, bez wymuszania kamery „structure".
+  // Używane przez zrzuty do PDF, które ustawiają kamerę imperatywnie.
+  setViewModeOnly: (viewMode) =>
+    set((state) => ({ config: { ...state.config, viewMode } })),
   setCameraMode: (cameraMode) =>
     set((state) => ({ config: { ...state.config, cameraMode } })),
   setShowDimensions: (showDimensions) =>
@@ -315,6 +303,28 @@ export const useConfiguratorStore = create((set) => ({
         },
       },
     })),
+  updateFrontProjection: (patch) =>
+    set((state) => {
+      const current = { ...DEFAULT_FRONT_PROJECTION, ...(state.config.frontProjection ?? {}) };
+      const nextDepth = patch.depthM === undefined
+        ? current.depthM
+        : clamp(Number(patch.depthM) || 0, FRONT_PROJECTION_LIMITS.minM, FRONT_PROJECTION_LIMITS.maxM);
+      const nextFinish = patch.liningFinish && FRONT_PROJECTION_FINISHES[patch.liningFinish]
+        ? patch.liningFinish
+        : current.liningFinish;
+      return {
+        config: {
+          ...state.config,
+          frontProjection: {
+            depthM: nextDepth,
+            liningFinish: nextFinish,
+          },
+          lighting: normalizeLighting(state.config.lighting, {
+            frontProjectionAvailable: isFrontProjectionAvailable(state.config.preset) && nextDepth > 0,
+          }),
+        },
+      };
+    }),
   updateCladding: (patch) =>
     set((state) => ({
       config: {
@@ -341,6 +351,40 @@ export const useConfiguratorStore = create((set) => ({
       config: {
         ...state.config,
         gutters: { ...state.config.gutters, ...patch },
+      },
+    })),
+  updateLighting: (patch) =>
+    set((state) => ({
+      config: {
+        ...state.config,
+        lighting: normalizeLighting(
+          { ...DEFAULT_LIGHTING, ...state.config.lighting, ...patch },
+          {
+            frontProjectionAvailable: isFrontProjectionAvailable(state.config.preset)
+              && Number(state.config.frontProjection?.depthM) > 0,
+          },
+        ),
+      },
+    })),
+  updateStructure: (patch) =>
+    set((state) => {
+      const next = { ...DEFAULT_STRUCTURE, ...state.config.structure, ...patch };
+      return {
+        config: {
+          ...state.config,
+          structure: {
+            ...next,
+            reinforcement: REINFORCEMENT_LEVELS[next.reinforcement] ? next.reinforcement : DEFAULT_STRUCTURE.reinforcement,
+            snowZone: SNOW_ZONES.includes(Number(next.snowZone)) ? Number(next.snowZone) : DEFAULT_STRUCTURE.snowZone,
+          },
+        },
+      };
+    }),
+  updateOrder: (patch) =>
+    set((state) => ({
+      config: {
+        ...state.config,
+        order: { ...defaultOrder, ...state.config.order, ...patch },
       },
     })),
   updateOpening: (id, patch) =>

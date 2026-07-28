@@ -1,0 +1,464 @@
+{
+  "schemaVersion": 1,
+  "licensePolicy": "Only CC0 sources and project-owned generated assets are included.",
+  "imageGenPrompt": "Square perfectly tileable premium oak woodgrain printed on coated steel; orthographic surface scan, even neutral light, warm natural oak, no planks, no seams, no text, no watermark.",
+  "sources": {
+    "Wood001": {
+      "title": "Wood 001",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood001",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel."
+    },
+    "Wood027": {
+      "title": "Wood 027",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood027",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel."
+    },
+    "Wood029": {
+      "title": "Wood 029",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood029",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel."
+    },
+    "generated-oak": {
+      "title": "Project oak decor base",
+      "author": "OpenAI ImageGen / project",
+      "license": "Project-owned generated asset",
+      "url": null,
+      "transformation": "Mirror-tiled, color graded and combined with CC0 micro-normal data."
+    }
+  },
+  "woodFinishes": {
+    "golden_oak": {
+      "kind": "wood",
+      "source": "generated-oak",
+      "title": "Project oak decor base",
+      "author": "OpenAI ImageGen / project",
+      "license": "Project-owned generated asset",
+      "url": null,
+      "transformation": "Mirror-tiled, color graded and combined with CC0 micro-normal data.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "golden_oak_3d": {
+      "kind": "wood",
+      "source": "generated-oak",
+      "title": "Project oak decor base",
+      "author": "OpenAI ImageGen / project",
+      "license": "Project-owned generated asset",
+      "url": null,
+      "transformation": "Mirror-tiled, color graded and combined with CC0 micro-normal data.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "natural_oak": {
+      "kind": "wood",
+      "source": "Wood001",
+      "title": "Wood 001",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood001",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "dark_oak": {
+      "kind": "wood",
+      "source": "Wood027",
+      "title": "Wood 027",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood027",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "bog_oak": {
+      "kind": "wood",
+      "source": "Wood029",
+      "title": "Wood 029",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood029",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "rustic_oak": {
+      "kind": "wood",
+      "source": "generated-oak",
+      "title": "Project oak decor base",
+      "author": "OpenAI ImageGen / project",
+      "license": "Project-owned generated asset",
+      "url": null,
+      "transformation": "Mirror-tiled, color graded and combined with CC0 micro-normal data.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "walnut": {
+      "kind": "wood",
+      "source": "Wood027",
+      "title": "Wood 027",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood027",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "winchester": {
+      "kind": "wood",
+      "source": "Wood001",
+      "title": "Wood 001",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood001",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "wenge": {
+      "kind": "wood",
+      "source": "Wood029",
+      "title": "Wood 029",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood029",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "mahogany": {
+      "kind": "wood",
+      "source": "Wood027",
+      "title": "Wood 027",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood027",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "macore": {
+      "kind": "wood",
+      "source": "Wood027",
+      "title": "Wood 027",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood027",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "oregon": {
+      "kind": "wood",
+      "source": "Wood001",
+      "title": "Wood 001",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood001",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "sapeli": {
+      "kind": "wood",
+      "source": "Wood027",
+      "title": "Wood 027",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood027",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "siena_noce": {
+      "kind": "wood",
+      "source": "Wood029",
+      "title": "Wood 029",
+      "author": "ambientCG",
+      "license": "CC0 1.0",
+      "url": "https://ambientcg.com/view?id=Wood029",
+      "transformation": "Color grading, contrast reduction and WebP export for coated steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "anteak": {
+      "kind": "wood",
+      "source": "generated-oak",
+      "title": "Project oak decor base",
+      "author": "OpenAI ImageGen / project",
+      "license": "Project-owned generated asset",
+      "url": null,
+      "transformation": "Mirror-tiled, color graded and combined with CC0 micro-normal data.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "turner_oak_malt": {
+      "kind": "wood",
+      "source": "generated-oak",
+      "title": "Project oak decor base",
+      "author": "OpenAI ImageGen / project",
+      "license": "Project-owned generated asset",
+      "url": null,
+      "transformation": "Mirror-tiled, color graded and combined with CC0 micro-normal data.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    }
+  },
+  "metalFamilies": {
+    "smooth-polyester": {
+      "kind": "metal-surface-family",
+      "source": "Procedural project texture",
+      "license": "Project-owned generated asset",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "normal",
+        "roughness"
+      ]
+    },
+    "matte-polyester": {
+      "kind": "metal-surface-family",
+      "source": "Procedural project texture",
+      "license": "Project-owned generated asset",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "normal",
+        "roughness"
+      ]
+    },
+    "metallic": {
+      "kind": "metal-surface-family",
+      "source": "Procedural project texture",
+      "license": "Project-owned generated asset",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "normal",
+        "roughness"
+      ]
+    },
+    "galvanized": {
+      "kind": "metal-surface-family",
+      "source": "Procedural project texture",
+      "license": "Project-owned generated asset",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "normal",
+        "roughness"
+      ]
+    },
+    "aluzinc": {
+      "kind": "metal-surface-family",
+      "source": "Procedural project texture",
+      "license": "Project-owned generated asset",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "normal",
+        "roughness"
+      ]
+    },
+    "brushed-metal": {
+      "kind": "metal-surface-family",
+      "source": "Procedural project texture",
+      "license": "Project-owned generated asset",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "normal",
+        "roughness"
+      ]
+    }
+  },
+  "panelWoodFinishes": {
+    "golden_oak": {
+      "kind": "printed-wood sandwich-panel skin",
+      "source": "sandwich-panel-golden-oak.png",
+      "author": "OpenAI ImageGen / project",
+      "license": "Project-owned generated asset",
+      "referenceProduct": "SteelProfil wood-effect PIR sandwich panel",
+      "referenceUrl": "https://www.steelprofil.eu/sklep/plyta-warstwowa-drewnopodobna-okladzina-poliuretan-pir/",
+      "transformation": "Mirror-tiled and exported as WebP. Normal and roughness were generated as smooth polyester-coated steel microstructure.",
+      "promptSummary": "Golden Oak factory-printed wood-effect coil coating on smooth galvanized steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "dark_oak": {
+      "kind": "printed-wood sandwich-panel skin",
+      "source": "sandwich-panel-dark-oak.png",
+      "author": "OpenAI ImageGen / project",
+      "license": "Project-owned generated asset",
+      "referenceProduct": "SteelProfil wood-effect PIR sandwich panel",
+      "referenceUrl": "https://www.steelprofil.eu/sklep/plyta-warstwowa-drewnopodobna-okladzina-poliuretan-pir/",
+      "transformation": "Mirror-tiled and exported as WebP. Normal and roughness were generated as smooth polyester-coated steel microstructure.",
+      "promptSummary": "Dark Oak factory-printed wood-effect coil coating on smooth galvanized steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    },
+    "bog_oak": {
+      "kind": "printed-wood sandwich-panel skin",
+      "source": "sandwich-panel-grey-wood.png",
+      "author": "OpenAI ImageGen / project",
+      "license": "Project-owned generated asset",
+      "referenceProduct": "SteelProfil wood-effect PIR sandwich panel",
+      "referenceUrl": "https://www.steelprofil.eu/sklep/plyta-warstwowa-drewnopodobna-okladzina-poliuretan-pir/",
+      "transformation": "Mirror-tiled and exported as WebP. Normal and roughness were generated as smooth polyester-coated steel microstructure.",
+      "promptSummary": "Grey Wood factory-printed wood-effect coil coating on smooth galvanized steel.",
+      "variants": [
+        "1k",
+        "2k"
+      ],
+      "maps": [
+        "albedo",
+        "normal",
+        "roughness"
+      ]
+    }
+  }
+}

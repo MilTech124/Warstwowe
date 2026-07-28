@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
+    "test": "node --test --experimental-loader ./tests/alias-loader.mjs tests/frontProjectionMath.test.mjs tests/frontProjectionStructure.test.mjs tests/lightingMath.test.mjs tests/materialFinishes.test.mjs tests/materialAssets.test.mjs tests/presetOpenings.test.mjs",
     "start": "next start -H 127.0.0.1"
   },
   "dependencies": {
@@ -15,6 +16,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.554.0",
     "next": "^16.2.7",
+    "pdfmake": "0.3.11",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwind-merge": "^3.4.0",

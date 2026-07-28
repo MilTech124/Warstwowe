@@ -1,60 +1,29 @@
 import { MathUtils, Quaternion, Vector3 } from "three";
+import { isGableRoof, roofMetrics, roofPitchBounds, slopedRoofLength } from "@/scene/roofMath";
+import { effectiveFrontOverhangM } from "@/scene/frontProjectionMath";
 
-export function getStructureClass(dimensions) {
-  if (dimensions.widthM >= 12 || dimensions.lengthM >= 20) return "heavy_hall";
-  if (dimensions.widthM >= 7) return "portal_hall";
-  return "garage_frame";
-}
+// Czysta geometria dachu żyje w roofMath.js (bez three), żeby mógł jej używać
+// model konstrukcji. Re-eksport dla modułów, które importują to z geometry.js.
+export { isGableRoof, roofMetrics, roofPitchBounds, slopedRoofLength };
 
-export function getBayPositions(lengthM, structureClass) {
-  const spacing = structureClass === "heavy_hall" ? 5.5 : structureClass === "portal_hall" ? 4 : 2;
-  const count = Math.max(2, Math.ceil(lengthM / spacing) + 1);
-  const start = -lengthM / 2;
-  return Array.from({ length: count }, (_, index) => start + (lengthM * index) / (count - 1));
-}
-
-export function roofMetrics(config) {
-  const { widthM, lengthM, wallHeightM } = config.dimensions;
-  const pitch = config.roof.pitchPercent / 100;
-  const singleRun = config.roof.type.includes("right") || config.roof.type.includes("left") ? widthM : lengthM;
-  const gableRun = config.roof.type === "gable_front_back" ? lengthM / 2 : widthM / 2;
-  const run = config.roof.type.startsWith("gable") ? gableRun : singleRun;
-  const rise = Math.max(0.15, run * pitch);
-  return {
-    pitch,
-    rise,
-    angle: Math.atan2(rise, run),
-    ridgeHeight: wallHeightM + rise,
-    eaveHeight: wallHeightM,
-  };
-}
-
-export function isGableRoof(type) {
-  return type === "gable_left_right" || type === "gable_front_back";
-}
-
-export function roofPitchBounds(type) {
-  return isGableRoof(type) ? { min: 18, max: 45, fallback: 28 } : { min: 3, max: 18, fallback: 7 };
-}
+// Klasa konstrukcji żyje w structure/classes.js razem z opisami klas.
+export { getStructureClass } from "@/scene/structure/classes";
 
 export function roofFootprint(config) {
   const { widthM, lengthM } = config.dimensions;
   const { front, back, left, right } = config.roof.overhangM;
+  const effectiveFront = effectiveFrontOverhangM(config);
 
   return {
     centerX: (right - left) / 2,
-    centerZ: (front - back) / 2,
+    centerZ: (effectiveFront - back) / 2,
     roofWidth: widthM + left + right,
-    roofLength: lengthM + front + back,
-    frontRun: lengthM / 2 + front,
+    roofLength: lengthM + effectiveFront + back,
+    frontRun: lengthM / 2 + effectiveFront,
     backRun: lengthM / 2 + back,
     leftRun: widthM / 2 + left,
     rightRun: widthM / 2 + right,
   };
-}
-
-export function slopedRoofLength(run, angle) {
-  return run / Math.max(0.001, Math.cos(angle));
 }
 
 // Transformacja otworu dachowego do lokalnego układu połaci dachu.
@@ -166,22 +135,27 @@ export function wallTopHeightAt(side, offset, config) {
   return wallHeightM;
 }
 
-export function wallOpeningTransform(opening, dimensions) {
+export function wallOpeningAxisCenter(opening, dimensions) {
   const span = opening.wall === "front" || opening.wall === "back" ? dimensions.widthM : dimensions.lengthM;
-  const xOrZ = MathUtils.clamp(opening.offsetM, -span / 2 + opening.widthM / 2, span / 2 - opening.widthM / 2);
+  const clampedOffset = MathUtils.clamp(opening.offsetM, -span / 2 + opening.widthM / 2, span / 2 - opening.widthM / 2);
+  return opening.wall === "back" || opening.wall === "left" ? -clampedOffset : clampedOffset;
+}
+
+export function wallOpeningTransform(opening, dimensions) {
+  const axisCenter = wallOpeningAxisCenter(opening, dimensions);
   const y = opening.sillM + opening.heightM / 2;
   const normalOffset = 0.025;
 
   if (opening.wall === "front") {
-    return { position: [xOrZ, y, dimensions.lengthM / 2 + normalOffset], rotation: [0, 0, 0], horizontal: "x" };
+    return { position: [axisCenter, y, dimensions.lengthM / 2 + normalOffset], rotation: [0, 0, 0], horizontal: "x" };
   }
   if (opening.wall === "back") {
-    return { position: [-xOrZ, y, -dimensions.lengthM / 2 - normalOffset], rotation: [0, Math.PI, 0], horizontal: "x" };
+    return { position: [axisCenter, y, -dimensions.lengthM / 2 - normalOffset], rotation: [0, Math.PI, 0], horizontal: "x" };
   }
   if (opening.wall === "left") {
-    return { position: [-dimensions.widthM / 2 - normalOffset, y, -xOrZ], rotation: [0, -Math.PI / 2, 0], horizontal: "z" };
+    return { position: [-dimensions.widthM / 2 - normalOffset, y, axisCenter], rotation: [0, -Math.PI / 2, 0], horizontal: "z" };
   }
-  return { position: [dimensions.widthM / 2 + normalOffset, y, xOrZ], rotation: [0, Math.PI / 2, 0], horizontal: "z" };
+  return { position: [dimensions.widthM / 2 + normalOffset, y, axisCenter], rotation: [0, Math.PI / 2, 0], horizontal: "z" };
 }
 
 export function quaternionBetween(start, end) {

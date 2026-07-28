@@ -8,8 +8,11 @@ import {
   Copy,
   DoorOpen,
   Droplets,
+  Frame,
   Grid2X2Plus,
   Layers3,
+  Lightbulb,
+  Moon,
   PanelTop,
   Plus,
   Ruler,
@@ -58,7 +61,17 @@ import {
 import { useConfiguratorStore } from "@/store/configuratorStore";
 import { cn, formatMeters } from "@/lib/utils";
 import { Field, Select, Slider } from "@/components/ui/Field";
+import { StructurePanel } from "@/components/StructurePanel";
+import { OrderPdfFooter } from "@/components/OrderPdfFooter";
+import { openingTitle } from "@/lib/openingLabels";
 import { roofPitchBounds } from "@/scene/geometry";
+import {
+  DEFAULT_FRONT_PROJECTION,
+  FRONT_PROJECTION_FINISHES,
+  FRONT_PROJECTION_LIMITS,
+  getFrontProjectionFinish,
+  isFrontProjectionAvailable,
+} from "@/config/frontProjection";
 
 const dimensionLabels = {
   widthM: "Szerokosc",
@@ -72,18 +85,24 @@ const tabs = [
   { id: "cladding", label: "Plyty", icon: Layers3 },
   { id: "flashings", label: "Obrobki", icon: SlidersHorizontal },
   { id: "openings", label: "Otwory", icon: DoorOpen },
+  { id: "lighting", label: "Oświetlenie", icon: Lightbulb },
+  { id: "structure", label: "Konstrukcja", icon: Frame },
 ];
 
 export function ControlPanel() {
-  const [activeTab, setActiveTab] = useState("body");
   const [claddingDraft, setCladdingDraft] = useState(null);
   const config = useConfiguratorStore((state) => state.config);
+  const activeTab = useConfiguratorStore((state) => state.ui.activeTab);
+  const setActiveTab = useConfiguratorStore((state) => state.setActiveTab);
   const updateDimension = useConfiguratorStore((state) => state.updateDimension);
   const updateRoof = useConfiguratorStore((state) => state.updateRoof);
   const updateOverhang = useConfiguratorStore((state) => state.updateOverhang);
+  const updateFrontProjection = useConfiguratorStore((state) => state.updateFrontProjection);
   const updateCladding = useConfiguratorStore((state) => state.updateCladding);
   const updateFlashings = useConfiguratorStore((state) => state.updateFlashings);
   const updateGutters = useConfiguratorStore((state) => state.updateGutters);
+  const updateLighting = useConfiguratorStore((state) => state.updateLighting);
+  const updateStructure = useConfiguratorStore((state) => state.updateStructure);
   const updateOpening = useConfiguratorStore((state) => state.updateOpening);
   const addOpening = useConfiguratorStore((state) => state.addOpening);
   const duplicateOpening = useConfiguratorStore((state) => state.duplicateOpening);
@@ -117,22 +136,27 @@ export function ControlPanel() {
 
       <div className="panel-content">
         {activeTab === "body" && (
-          <PanelSection title="Wymiary obiektu" icon={SlidersHorizontal}>
-            <div className="control-stack">
-              {Object.entries(config.dimensions).map(([key, value]) => (
-                <RangeControl
-                  key={key}
-                  label={dimensionLabels[key]}
-                  value={value}
-                  display={formatMeters(value)}
-                  min={limits[key][0]}
-                  max={limits[key][1]}
-                  step={0.1}
-                  onChange={(next) => updateDimension(key, next)}
-                />
-              ))}
-            </div>
-          </PanelSection>
+          <>
+            <PanelSection title="Wymiary obiektu" icon={SlidersHorizontal}>
+              <div className="control-stack">
+                {Object.entries(config.dimensions).map(([key, value]) => (
+                  <RangeControl
+                    key={key}
+                    label={dimensionLabels[key]}
+                    value={value}
+                    display={formatMeters(value)}
+                    min={limits[key][0]}
+                    max={limits[key][1]}
+                    step={0.1}
+                    onChange={(next) => updateDimension(key, next)}
+                  />
+                ))}
+              </div>
+            </PanelSection>
+            <PanelSection title="Wypust frontowy" icon={PanelTop}>
+              <FrontProjectionPanel config={config} updateFrontProjection={updateFrontProjection} />
+            </PanelSection>
+          </>
         )}
 
         {activeTab === "roof" && (
@@ -205,8 +229,79 @@ export function ControlPanel() {
             <FlashingsPanel config={config} updateFlashings={updateFlashings} />
           </PanelSection>
         )}
+
+        {activeTab === "structure" && (
+          <PanelSection title="Konstrukcja stalowa" icon={Frame}>
+            <StructurePanel config={config} updateStructure={updateStructure} />
+          </PanelSection>
+        )}
+
+        {activeTab === "lighting" && (
+          <PanelSection title="Oświetlenie obiektu" icon={Lightbulb}>
+            <LightingPanel config={config} updateLighting={updateLighting} />
+          </PanelSection>
+        )}
       </div>
+
+      <OrderPdfFooter />
     </aside>
+  );
+}
+
+function FrontProjectionPanel({ config, updateFrontProjection }) {
+  const [colorModalOpen, setColorModalOpen] = useState(false);
+  const available = isFrontProjectionAvailable(config.preset);
+  const selection = { ...DEFAULT_FRONT_PROJECTION, ...(config.frontProjection ?? {}) };
+  const finish = getFrontProjectionFinish(selection.liningFinish);
+  const totalFrontReachM = (Number(config.roof?.overhangM?.front) || 0) + selection.depthM;
+
+  return (
+    <div className={cn("front-projection-panel", !available && "is-disabled")}>
+      {!available && (
+        <div className="front-projection-unavailable" role="status">
+          Dostępne dla garażu pojedynczego i podwójnego.
+        </div>
+      )}
+      <RangeControl
+        label="Głębokość wypustu"
+        value={available ? selection.depthM : 0}
+        display={formatMeters(available ? selection.depthM : 0)}
+        min={FRONT_PROJECTION_LIMITS.minM}
+        max={FRONT_PROJECTION_LIMITS.maxM}
+        step={FRONT_PROJECTION_LIMITS.stepM}
+        disabled={!available}
+        onChange={(depthM) => updateFrontProjection({ depthM })}
+      />
+      <div className="front-projection-total">
+        <span>Łączne wysunięcie dachu</span>
+        <strong>{formatMeters(available ? totalFrontReachM : config.roof.overhangM.front)}</strong>
+        <small>Okap przód + wypust</small>
+      </div>
+      <button
+        className="title-color-button front-projection-finish"
+        type="button"
+        disabled={!available}
+        onClick={() => setColorModalOpen(true)}
+        aria-label={`Wykończenie wnętrza wypustu: ${finish.label}`}
+      >
+        <span className="color-chip" style={{ backgroundColor: finish.hex }} />
+        <span>
+          <small>Wykończenie od środka</small>
+          <strong>{finish.label}</strong>
+        </span>
+      </button>
+      <ColorModal
+        title="Wykończenie wnętrza wypustu"
+        colors={FRONT_PROJECTION_FINISHES}
+        selected={selection.liningFinish}
+        open={available && colorModalOpen}
+        onClose={() => setColorModalOpen(false)}
+        onSelect={(liningFinish) => {
+          updateFrontProjection({ liningFinish });
+          setColorModalOpen(false);
+        }}
+      />
+    </div>
   );
 }
 
@@ -272,11 +367,10 @@ function FlashingsPanel({ config, updateFlashings }) {
 }
 
 function resolveFlashingColors(roofColor) {
+  const { roof_match: _match, ...finishes } = FLASHING_COLORS;
   return {
     roof_match: { label: `Jak dach (${roofColor.label})`, hex: roofColor.hex },
-    anthracite: FLASHING_COLORS.anthracite,
-    graphite: FLASHING_COLORS.graphite,
-    silver: FLASHING_COLORS.silver,
+    ...finishes,
   };
 }
 
@@ -326,19 +420,89 @@ function GuttersPanel({ config, updateGutters }) {
 }
 
 function resolveGutterColors(roofColor) {
+  const { roof_match: _match, ...finishes } = GUTTER_COLORS;
   return {
     roof_match: { label: `Jak dach (${roofColor.label})`, hex: roofColor.hex },
-    zinc: GUTTER_COLORS.zinc,
-    copper: GUTTER_COLORS.copper,
-    anthracite: GUTTER_COLORS.anthracite,
-    graphite: GUTTER_COLORS.graphite,
-    silver: GUTTER_COLORS.silver,
+    ...finishes,
   };
 }
 
-function ToggleRow({ label, description, checked, onChange }) {
+function LightingPanel({ config, updateLighting }) {
+  const projectionSupported = isFrontProjectionAvailable(config.preset);
+  const projectionAvailable = projectionSupported && Number(config.frontProjection?.depthM) > 0;
+  const gateCount = config.openings.filter((opening) => opening.kind === "gate").length;
+  const lighting = config.lighting ?? {};
+
   return (
-    <button className={cn("toggle-row", checked && "active")} type="button" onClick={() => onChange(!checked)}>
+    <div className="lighting-panel">
+      <div className="lighting-preview-note" role="status">
+        <span className="lighting-preview-icon" aria-hidden="true">
+          <Moon className="h-4 w-4" />
+        </span>
+        <span>
+          <strong>Tryb prezentacji oświetlenia</strong>
+          <small>Scena jest przyciemniona tylko podczas pracy w tej zakładce.</small>
+        </span>
+      </div>
+
+      <div className="lighting-toggle-list">
+        <ToggleRow
+          label="Oświetlenie wewnętrzne"
+          description="Liniowe oprawy LED rozmieszczone równomiernie pod dachem garażu."
+          checked={Boolean(lighting.interiorLighting)}
+          onChange={(interiorLighting) => updateLighting({ interiorLighting })}
+        />
+        <ToggleRow
+          label="LED po obrysie dachu"
+          description="Ciągła linia światła pod wszystkimi zewnętrznymi krawędziami dachu."
+          checked={Boolean(lighting.roofPerimeterLed)}
+          onChange={(roofPerimeterLed) => updateLighting({ roofPerimeterLed })}
+        />
+        <ToggleRow
+          label="Lampy podłużne nad bramami"
+          description={gateCount > 0
+            ? `Automatycznie nad każdą bramą — obecnie ${gateCount} ${gateCount === 1 ? "brama" : "bramy"}.`
+            : "Lampy pojawią się automatycznie po dodaniu bramy."}
+          checked={Boolean(lighting.gateLamps)}
+          onChange={(gateLamps) => updateLighting({ gateLamps })}
+        />
+        <ToggleRow
+          label="Kinkiety zewnętrzne"
+          description="Dwa małe kinkiety na elewacji frontowej z miękkim światłem skierowanym w dół."
+          checked={Boolean(lighting.exteriorSconces)}
+          onChange={(exteriorSconces) => updateLighting({ exteriorSconces })}
+        />
+        <ToggleRow
+          label="LED przy obróbce wypustu"
+          description={projectionAvailable
+            ? "LED po wewnętrznej stronie obróbki dachu i obu ścian wypustu."
+            : projectionSupported
+              ? "Najpierw ustaw głębokość wypustu większą niż 0 m w zakładce Bryła."
+              : "Opcja wymaga wypustu dostępnego dla garażu pojedynczego lub podwójnego."}
+          checked={Boolean(lighting.frontProjectionLed)}
+          disabled={!projectionAvailable}
+          onChange={(frontProjectionLed) => updateLighting({ frontProjectionLed })}
+        />
+      </div>
+
+      {!projectionAvailable && (
+        <p className="lighting-compatibility-note">
+          LED wypustu pozostaje wyłączony dla tego typu obiektu.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ToggleRow({ label, description, checked, onChange, disabled = false }) {
+  return (
+    <button
+      className={cn("toggle-row", checked && "active", disabled && "is-disabled")}
+      type="button"
+      disabled={disabled}
+      aria-pressed={checked}
+      onClick={() => onChange(!checked)}
+    >
       <span>
         <strong>{label}</strong>
         <small>{description}</small>
@@ -348,11 +512,6 @@ function ToggleRow({ label, description, checked, onChange }) {
       </span>
     </button>
   );
-}
-
-function openingTitle(opening, index) {
-  const kind = opening.kind === "gate" ? "Brama" : opening.kind === "door" ? "Drzwi" : opening.kind === "roofWindow" ? "Okno dachowe" : "Okno";
-  return `${kind} ${index + 1}`;
 }
 
 function OpeningsPanel({ config, updateOpening, addOpening, duplicateOpening, removeOpening }) {
@@ -1129,9 +1288,41 @@ function CladdingFlow({ selection, appliedSelection, onChange, onColorChange, on
 }
 
 function ColorModal({ title, colors, selected, open, onClose, onSelect }) {
+  const [query, setQuery] = useState("");
+  const [activeGroup, setActiveGroup] = useState("popular");
+
   if (!open || typeof document === "undefined") {
     return null;
   }
+
+  const normalizedQuery = query.trim().toLocaleLowerCase("pl");
+  const entries = Object.entries(colors);
+  const groupFor = (key, item) => {
+    if (item.kind === "wood" || item.group === "wood") return "wood";
+    if (item.group === "metallic" || ["zinc", "copper", "galvanized", "aluzinc", "metalbrush"].includes(key)) return "metallic";
+    if (item.group === "ral" || item.code?.startsWith("RAL") || item.label?.includes("RAL")) return "ral";
+    return "popular";
+  };
+  const groups = [
+    ["popular", "Popularne"],
+    ["ral", "RAL"],
+    ["wood", "Drewno"],
+    ["metallic", "Metaliczne"],
+  ];
+  const availableGroupKeys = new Set([
+    "popular",
+    ...entries.map(([key, item]) => groupFor(key, item)),
+  ]);
+  const visibleGroups = groups.filter(([key]) => availableGroupKeys.has(key));
+  const effectiveGroup = availableGroupKeys.has(activeGroup) ? activeGroup : "popular";
+  const filtered = entries.filter(([key, item]) => {
+    const matchesQuery = !normalizedQuery
+      || `${key} ${item.label} ${item.code || ""}`.toLocaleLowerCase("pl").includes(normalizedQuery);
+    if (!matchesQuery) return false;
+    if (normalizedQuery) return true;
+    if (effectiveGroup === "popular") return item.popular || key === selected || groupFor(key, item) === "popular";
+    return groupFor(key, item) === effectiveGroup;
+  });
 
   return createPortal(
     <div className="color-modal-backdrop" role="presentation" onClick={onClose}>
@@ -1143,15 +1334,51 @@ function ColorModal({ title, colors, selected, open, onClose, onSelect }) {
           </div>
           <button className="color-modal-close" type="button" onClick={onClose} aria-label="Zamknij wybor koloru">x</button>
         </div>
-        <div className="color-modal-grid">
-          {Object.entries(colors).map(([key, item]) => (
-            <button key={key} className={cn("color-modal-choice", selected === key && "active")} type="button" onClick={() => onSelect(key)}>
-              <span className="color-modal-swatch" style={{ backgroundColor: item.hex }} aria-hidden="true" />
-              <span>{item.label}</span>
-              {selected === key && <Check className="h-4 w-4" />}
+        <input
+          className="color-modal-search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Szukaj po nazwie lub kodzie RAL"
+          aria-label="Szukaj wykończenia"
+        />
+        <div className="color-modal-groups" role="tablist" aria-label="Grupy wykończeń">
+          {visibleGroups.map(([key, label]) => (
+            <button
+              key={key}
+              className={cn(effectiveGroup === key && "active")}
+              type="button"
+              role="tab"
+              aria-selected={effectiveGroup === key}
+              onClick={() => setActiveGroup(key)}
+            >
+              {label}
             </button>
           ))}
         </div>
+        <div className="color-modal-grid">
+          {filtered.map(([key, item]) => (
+            <button key={key} className={cn("color-modal-choice", selected === key && "active")} type="button" onClick={() => onSelect(key)}>
+              <span
+                className={cn("color-modal-swatch", item.preview && "textured")}
+                style={{
+                  backgroundColor: item.hex,
+                  backgroundImage: item.preview ? `url("${item.preview}")` : undefined,
+                }}
+                aria-hidden="true"
+              />
+              <span>
+                <strong>{item.label}</strong>
+                {item.code && <small>{item.code}</small>}
+              </span>
+              {selected === key && <Check className="h-4 w-4" />}
+            </button>
+          ))}
+          {!filtered.length && <div className="color-modal-empty">Brak wykończeń pasujących do wyszukiwania.</div>}
+        </div>
+        <p className="color-modal-disclaimer">
+          Kolory na ekranie są poglądowe. Przed zamówieniem potwierdź wykończenie na fizycznym wzorniku.
+        </p>
       </div>
     </div>,
     document.body,
@@ -1182,76 +1409,20 @@ function PanelSection({ title, icon: Icon, children }) {
   );
 }
 
-function RangeControl({ label, value, display, min, max, step, onChange, compact = false }) {
+function RangeControl({ label, value, display, min, max, step, onChange, compact = false, disabled = false }) {
   return (
-    <div className={cn("range-control", compact && "compact")}>
+    <div className={cn("range-control", compact && "compact", disabled && "is-disabled")}>
       <div className="range-meta">
         <span>{label}</span>
         <strong>{display}</strong>
       </div>
-      <Slider min={min} max={max} step={step} value={value} onChange={onChange} />
+      <Slider min={min} max={max} step={step} value={value} onChange={onChange} disabled={disabled} />
       {!compact && (
         <div className="range-limits">
           <span>{formatMeters(min)}</span>
           <span>{formatMeters(max)}</span>
         </div>
       )}
-    </div>
-  );
-}
-
-function OpeningEditor({ opening, updateOpening, dimensions }) {
-  const title = opening.kind === "gate" ? "Brama" : opening.kind === "door" ? "Drzwi" : opening.kind === "roofWindow" ? "Okno dachowe" : "Okno";
-  const roofPlacement = opening.kind === "roofWindow";
-  const wallSpan = roofPlacement ? dimensions.widthM : opening.wall === "front" || opening.wall === "back" ? dimensions.widthM : dimensions.lengthM;
-  const offsetLimit = Math.max(0.1, (wallSpan - opening.widthM) / 2 - 0.25);
-  const model = opening.kind === "door"
-    ? getDoorModel(opening)
-    : opening.kind === "window" || opening.kind === "roofWindow"
-      ? getWindowModel(opening)
-      : null;
-  const orientation = model ? getWindowOrientation(opening, model) : "horizontal";
-  const windowRanges = model ? getWindowSizeRanges(model, orientation) : null;
-  const widthRange = opening.kind === "gate" ? [1.8, 6] : windowRanges?.widthRange || model?.widthRange || [0.5, 3.6];
-  const heightRange = opening.kind === "gate" ? [1.8, 4.5] : windowRanges?.heightRange || model?.heightRange || [0.4, 1.8];
-  const maxWidth = Math.max(widthRange[0], Math.min(widthRange[1], wallSpan - 0.8));
-  const maxHeight = roofPlacement
-    ? Math.max(heightRange[0], Math.min(heightRange[1], dimensions.lengthM - 0.8))
-    : Math.max(heightRange[0], Math.min(heightRange[1], dimensions.wallHeightM - opening.sillM - 0.25));
-  const roofDepthLimit = Math.max(0.1, (dimensions.lengthM - opening.heightM) / 2 - 0.3);
-
-  return (
-    <div className="opening-editor premium">
-      <div className="opening-title">
-        <PanelTop className="h-4 w-4" />
-        <span>{title}</span>
-      </div>
-      {!roofPlacement && <div className="thickness-grid">
-        <Field label="Sciana">
-          <Select value={opening.wall} onChange={(event) => updateOpening(opening.id, { wall: event.target.value })}>
-            {Object.entries(OPENING_WALLS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-          </Select>
-        </Field>
-      </div>}
-      <div className="control-stack">
-        <RangeControl label={roofPlacement ? "Pozycja w poprzek dachu" : "Pozycja"} value={opening.offsetM} display={formatMeters(opening.offsetM)} min={-offsetLimit} max={offsetLimit} step={0.05} onChange={(value) => updateOpening(opening.id, { offsetM: value })} />
-        {roofPlacement && (
-          <RangeControl label="Pozycja wzdluz dachu" value={opening.sillM} display={formatMeters(opening.sillM)} min={-roofDepthLimit} max={roofDepthLimit} step={0.05} onChange={(value) => updateOpening(opening.id, { sillM: value })} />
-        )}
-        <RangeControl label="Szerokość" value={opening.widthM} display={formatMeters(opening.widthM)} min={widthRange[0]} max={maxWidth} step={0.05} onChange={(value) => updateOpening(opening.id, { widthM: value })} />
-        <RangeControl label="Wysokość" value={opening.heightM} display={formatMeters(opening.heightM)} min={heightRange[0]} max={maxHeight} step={0.05} onChange={(value) => updateOpening(opening.id, { heightM: value })} />
-        {opening.kind === "window" && (
-          <RangeControl
-            label="Wysokość parapetu"
-            value={opening.sillM}
-            display={formatMeters(opening.sillM)}
-            min={0.35}
-            max={Math.max(0.35, dimensions.wallHeightM - opening.heightM - 0.25)}
-            step={0.05}
-            onChange={(value) => updateOpening(opening.id, { sillM: value })}
-          />
-        )}
-      </div>
     </div>
   );
 }
