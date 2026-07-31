@@ -15,7 +15,7 @@ Docelowo każda firma otrzymuje:
 - własne ustawienia i branding,
 - odseparowane zamówienia,
 - wybrany pakiet funkcjonalny,
-- osobną organizację Clerk,
+- pracowników powiązanych z firmą wspólnym `companyId`,
 - rozliczenia obsługiwane przez PayU.
 
 ## 2. Zaimplementowane ścieżki
@@ -201,13 +201,16 @@ Zmiany zapisane jako szkic nie wpływają na publiczny konfigurator do chwili pu
 
 Zaimplementowano:
 
-- organizacje Clerk,
+- członkostwa firmy zapisane w MongoDB i izolowane przez `companyId`,
 - role właściciel, administrator i handlowiec,
-- zaproszenia we własnym UI,
+- zaproszenia e-mail we własnym UI, wysyłane przez SMTP,
+- automatyczne połączenie zaproszenia z kontem Clerk po zalogowaniu zweryfikowanym adresem e-mail,
 - kontrolę limitu kont również po stronie API,
 - zmianę roli przez endpoint,
-- usuwanie pracownika z organizacji,
+- usuwanie dostępu pracownika do firmy bez usuwania jego konta Clerk,
 - zabezpieczenie właściciela przed usunięciem.
+
+Clerk służy wyłącznie do uwierzytelniania. Każdy pracownik ma własny `clerkUserId`, natomiast właściciel i pracownicy tej samej firmy korzystają ze wspólnego `companyId`. Funkcja Clerk Organizations nie jest wymagana.
 
 Handlowiec widzi pulpit i zamówienia. Nie otrzymuje dostępu do katalogu, ustawień, zespołu, rozliczeń ani audytu.
 
@@ -364,7 +367,7 @@ Dodano testy:
 
 - [ ] Utworzyć produkcyjny klaster MongoDB Atlas w regionie europejskim.
 - [ ] Skonfigurować Clerk oraz dozwolone adresy aplikacji.
-- [ ] Utworzyć produkcyjne organizacje i role Clerk.
+- [ ] Skonfigurować w Clerk logowanie, rejestrację i dozwolone adresy przekierowań.
 - [ ] Uzupełnić `CLERK_SUPERADMIN_USER_IDS`.
 - [ ] Skonfigurować PayU Sandbox.
 - [ ] Uzyskać aktywację tokenizacji i płatności cyklicznych od PayU.
@@ -376,7 +379,7 @@ Dodano testy:
 ### Testy integracyjne
 
 - [ ] Przetestować pełną rejestrację z prawdziwym środowiskiem Clerk.
-- [ ] Przetestować utworzenie Clerk Organization.
+- [ ] Przetestować utworzenie członkostwa właściciela oraz przyjęcie zaproszenia pracownika.
 - [ ] Przetestować tokenizację karty w PayU Secure Form.
 - [ ] Przetestować transakcję 0 zł i rozpoczęcie trialu.
 - [ ] Przetestować pierwsze obciążenie po trialu.

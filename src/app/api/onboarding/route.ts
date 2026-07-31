@@ -2,10 +2,11 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { companyCode, onboardingSchema } from "@/domain/company";
 import { addBillingPeriod } from "@/domain/plans";
-import { getRequestIdentity, createClerkOrganization } from "@/server/auth";
+import { getRequestIdentity } from "@/server/auth";
 import { connectMongo } from "@/server/db/connection";
 import {
   Company,
+  CompanyMembership,
   CompanySettings,
   Payment,
   Subscription,
@@ -57,9 +58,7 @@ export async function POST(request: NextRequest) {
     const email = user?.primaryEmailAddress?.emailAddress;
     if (!email) return NextResponse.json({ error: "Konto Clerk nie ma zweryfikowanego adresu e-mail." }, { status: 400 });
 
-    const organization = await createClerkOrganization(input.companyName, input.slug, identity.userId);
     const company = await Company.create({
-      clerkOrgId: organization.id,
       ownerClerkUserId: identity.userId,
       slug: input.slug,
       displayName: input.companyName,
@@ -72,6 +71,17 @@ export async function POST(request: NextRequest) {
         supportEmail: email,
       },
       billing: { legalName: input.companyName, email },
+    });
+
+    await CompanyMembership.create({
+      companyId: company._id,
+      clerkUserId: identity.userId,
+      email: email.toLowerCase(),
+      firstName: user?.firstName || undefined,
+      lastName: user?.lastName || undefined,
+      role: "OWNER",
+      status: "ACTIVE",
+      joinedAt: new Date(),
     });
 
     await CompanySettings.create({

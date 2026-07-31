@@ -7,6 +7,7 @@ import {
   CatalogManufacturer,
   CatalogProduct,
   Company,
+  CompanyMembership,
   FeatureOverride,
   Order,
   OrderEvent,
@@ -186,16 +187,65 @@ export async function getCompanyTeam(slug: string) {
   const company = (access as any).company;
   if ((access as any).demo || !clerkConfigured()) {
     return [
-      { id: "demo-owner", publicUserData: { firstName: "Anna", lastName: "Właściciel", identifier: "anna@example.pl" }, role: "org:admin" },
-      { id: "demo-sales", publicUserData: { firstName: "Marek", lastName: "Handlowiec", identifier: "marek@example.pl" }, role: "org:member" },
+      { id: "demo-owner", status: "ACTIVE", publicUserData: { userId: "demo-owner", firstName: "Anna", lastName: "Właściciel", identifier: "anna@example.pl" }, role: "OWNER" },
+      { id: "demo-sales", status: "ACTIVE", publicUserData: { userId: "demo-sales", firstName: "Marek", lastName: "Handlowiec", identifier: "marek@example.pl" }, role: "SALESPERSON" },
     ];
   }
+
   const client = await clerkClient();
-  const result = await client.organizations.getOrganizationMembershipList({
-    organizationId: company.clerkOrgId,
-    limit: 100,
-  });
-  return result.data;
+  let memberships: any[] = await CompanyMembership.find({
+    companyId: company._id,
+    status: { $in: ["INVITED", "ACTIVE"] },
+  }).sort({ role: 1, createdAt: 1 }).lean();
+
+  if (!memberships.some((item) => item.role === "OWNER")) {
+    const owner = await client.users.getUser(company.ownerClerkUserId);
+    const ownerEmail = owner.primaryEmailAddress?.emailAddress?.toLowerCase();
+    if (ownerEmail) {
+      const ownerMembership: any = await CompanyMembership.findOneAndUpdate(
+        { companyId: company._id, email: ownerEmail },
+        {
+          $set: {
+            clerkUserId: company.ownerClerkUserId,
+            firstName: owner.firstName || undefined,
+            lastName: owner.lastName || undefined,
+            role: "OWNER",
+            status: "ACTIVE",
+            joinedAt: new Date(),
+          },
+        },
+        { upsert: true, new: true },
+      ).lean();
+      memberships = [ownerMembership, ...memberships];
+    }
+  }
+
+  return Promise.all(memberships.map(async (membership) => {
+    let firstName = membership.firstName;
+    let lastName = membership.lastName;
+    let email = membership.email;
+    if (membership.clerkUserId) {
+      try {
+        const user = await client.users.getUser(membership.clerkUserId);
+        firstName = user.firstName || firstName;
+        lastName = user.lastName || lastName;
+        email = user.primaryEmailAddress?.emailAddress || email;
+      } catch {
+        // Membership remains visible even if the Clerk profile is temporarily unavailable.
+      }
+    }
+    return {
+      id: String(membership._id),
+      status: membership.status,
+      role: membership.role,
+      publicUserData: {
+        userId: membership.clerkUserId || null,
+        firstName,
+        lastName,
+        identifier: email,
+      },
+    };
+  }));
 }
 
 export async function getSuperadminDataset() {

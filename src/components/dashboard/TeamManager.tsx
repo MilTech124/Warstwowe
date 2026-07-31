@@ -13,7 +13,7 @@ export function TeamManager({
   seatLimit: number;
 }) {
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("org:member");
+  const [role, setRole] = useState("SALESPERSON");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [localMembers, setLocalMembers] = useState(members);
@@ -30,8 +30,16 @@ export function TeamManager({
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Nie udało się wysłać zaproszenia.");
+      setLocalMembers((current) => [...current, {
+        id: result.invitation.id,
+        status: "INVITED",
+        role: result.invitation.role,
+        publicUserData: { userId: null, identifier: result.invitation.email },
+      }]);
       setEmail("");
-      setMessage("Zaproszenie zostało wysłane.");
+      setMessage(result.emailSent
+        ? "Zaproszenie zostało wysłane."
+        : "Dostęp został przygotowany. Skonfiguruj SMTP, aby wysyłać zaproszenia e-mailem.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Nie udało się wysłać zaproszenia.");
     } finally {
@@ -40,15 +48,29 @@ export function TeamManager({
   }
 
   async function removeMember(membership: any) {
-    const userId = membership.publicUserData?.userId;
-    if (!userId) return;
     setBusy(true);
-    const response = await fetch(`/api/companies/${slug}/team/members/${userId}`, { method: "DELETE" });
+    const response = await fetch(`/api/companies/${slug}/team/members/${membership.id}`, { method: "DELETE" });
     const result = await response.json();
     setBusy(false);
     if (!response.ok) return setMessage(result.error);
     setLocalMembers((current) => current.filter((item) => item.id !== membership.id));
-    setMessage("Konto zostało usunięte z organizacji.");
+    setMessage("Dostęp do firmy został usunięty.");
+  }
+
+  async function changeRole(membership: any, nextRole: string) {
+    setBusy(true);
+    setMessage(null);
+    const response = await fetch(`/api/companies/${slug}/team/members/${membership.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: nextRole }),
+    });
+    const result = await response.json();
+    setBusy(false);
+    if (!response.ok) return setMessage(result.error || "Nie udało się zmienić roli.");
+    setLocalMembers((current) => current.map((item) =>
+      item.id === membership.id ? { ...item, role: nextRole } : item));
+    setMessage("Rola pracownika została zmieniona.");
   }
 
   return (
@@ -63,8 +85,22 @@ export function TeamManager({
               <div key={membership.id}>
                 <span className="dashboard-avatar">{displayName.slice(0, 2).toUpperCase()}</span>
                 <div><strong>{displayName}</strong><small>{user.identifier}</small></div>
-                <span className="role-badge">{membership.role === "org:admin" ? "Administrator" : "Handlowiec"}</span>
-                {user.userId && <button type="button" className="icon-button danger" aria-label={`Usuń konto ${displayName}`} title="Usuń konto" disabled={busy} onClick={() => removeMember(membership)}><Trash2 size={14} /></button>}
+                {membership.role === "OWNER" ? (
+                  <span className="role-badge">Właściciel</span>
+                ) : (
+                  <select
+                    className="role-badge"
+                    aria-label={`Rola ${displayName}`}
+                    value={membership.role}
+                    disabled={busy}
+                    onChange={(event) => changeRole(membership, event.target.value)}
+                  >
+                    <option value="SALESPERSON">Handlowiec</option>
+                    <option value="ADMIN">Administrator</option>
+                  </select>
+                )}
+                {membership.status === "INVITED" && <span className="role-badge">Oczekuje</span>}
+                {membership.role !== "OWNER" && <button type="button" className="icon-button danger" aria-label={`Usuń konto ${displayName}`} title="Usuń konto" disabled={busy} onClick={() => removeMember(membership)}><Trash2 size={14} /></button>}
               </div>
             );
           })}
@@ -73,9 +109,9 @@ export function TeamManager({
       <form className="dashboard-card invite-card" onSubmit={invite}>
         <div className="invite-icon"><UserPlus size={22} /></div>
         <h2>Zaproś pracownika</h2>
-        <p>Zaproszenie Clerk zostanie wysłane na podany adres. Limit obejmuje właściciela firmy.</p>
+        <p>Dostęp zostanie przypisany do firmy po rejestracji tym adresem e-mail. Limit obejmuje właściciela firmy.</p>
         <label><span>Adres e-mail</span><div><Mail size={16} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required placeholder="handlowiec@firma.pl" /></div></label>
-        <label><span>Rola</span><select value={role} onChange={(event) => setRole(event.target.value)}><option value="org:member">Handlowiec</option><option value="org:admin">Administrator</option></select></label>
+        <label><span>Rola</span><select value={role} onChange={(event) => setRole(event.target.value)}><option value="SALESPERSON">Handlowiec</option><option value="ADMIN">Administrator</option></select></label>
         {message && <div className="settings-message" role="status">{message}</div>}
         <button className="primary-button full" disabled={busy || localMembers.length >= seatLimit}>{busy ? <Loader2 size={16} className="spin" /> : <UserPlus size={16} />} Wyślij zaproszenie</button>
       </form>

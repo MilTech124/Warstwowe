@@ -1,18 +1,21 @@
-import { clerkClient } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { clerkConfigured, requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
+import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
+import { CompanyMembership } from "@/server/db/models";
 import { writeAudit } from "@/server/audit";
 
-const roleSchema = z.object({ role: z.enum(["org:admin", "org:member"]) });
+const roleSchema = z.object({ role: z.enum(["ADMIN", "SALESPERSON"]) });
 
-async function getContext(request: NextRequest, firma: string, userId: string) {
+async function getContext(request: NextRequest, firma: string, membershipId: string) {
   const access = await requireCompanyMember(firma, ["OWNER", "ADMIN"]);
   requireCompanyWriteIntent(request, access);
   const company: any = (access as any).company;
-  if (userId === company.ownerClerkUserId) throw new Error("Nie można usunąć ani zdegradować właściciela firmy.");
-  if (!clerkConfigured()) throw new Error("Clerk nie jest skonfigurowany.");
-  return { access, company, client: await clerkClient() };
+  const membership: any = await CompanyMembership.findOne({ _id: membershipId, companyId: company._id });
+  if (!membership) throw new Error("Konto nie istnieje w tej firmie.");
+  if (membership.role === "OWNER" || membership.clerkUserId === company.ownerClerkUserId) {
+    throw new Error("Nie można usunąć ani zdegradować właściciela firmy.");
+  }
+  return { access, company, membership };
 }
 
 export async function PATCH(
@@ -20,24 +23,23 @@ export async function PATCH(
   { params }: { params: Promise<{ firma: string; userId: string }> },
 ) {
   try {
-    const { firma, userId } = await params;
+    const { firma, userId: membershipId } = await params;
     const { role } = roleSchema.parse(await request.json());
-    const { access, company, client } = await getContext(request, firma, userId);
-    const membership = await client.organizations.updateOrganizationMembership({
-      organizationId: company.clerkOrgId,
-      userId,
-      role,
-    });
+    const { access, company, membership } = await getContext(request, firma, membershipId);
+    const beforeRole = membership.role;
+    membership.role = role;
+    await membership.save();
     await writeAudit({
       companyId: company._id,
       actorClerkUserId: access.userId,
       actorType: "USER",
       action: "team.role_changed",
-      entityType: "ClerkMembership",
-      entityId: membership.id,
-      after: { userId, role },
+      entityType: "CompanyMembership",
+      entityId: String(membership._id),
+      before: { role: beforeRole },
+      after: { clerkUserId: membership.clerkUserId, role },
     });
-    return NextResponse.json({ membership });
+    return NextResponse.json({ membership: { id: String(membership._id), role } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Nie udało się zmienić roli." }, { status: 400 });
   }
@@ -48,20 +50,18 @@ export async function DELETE(
   { params }: { params: Promise<{ firma: string; userId: string }> },
 ) {
   try {
-    const { firma, userId } = await params;
-    const { access, company, client } = await getContext(request, firma, userId);
-    const membership = await client.organizations.deleteOrganizationMembership({
-      organizationId: company.clerkOrgId,
-      userId,
-    });
+    const { firma, userId: membershipId } = await params;
+    const { access, company, membership } = await getContext(request, firma, membershipId);
+    const before = { clerkUserId: membership.clerkUserId, email: membership.email, role: membership.role };
+    await membership.deleteOne();
     await writeAudit({
       companyId: company._id,
       actorClerkUserId: access.userId,
       actorType: "USER",
       action: "team.member_removed",
-      entityType: "ClerkMembership",
-      entityId: membership.id,
-      before: { userId },
+      entityType: "CompanyMembership",
+      entityId: membershipId,
+      before,
     });
     return NextResponse.json({ ok: true });
   } catch (error) {

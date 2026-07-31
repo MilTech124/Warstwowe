@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
-import { Order, OrderEvent } from "@/server/db/models";
+import { CompanyMembership, Order, OrderEvent } from "@/server/db/models";
 import { ORDER_STATUSES } from "@/types/saas";
 
 const updateOrderSchema = z.object({
@@ -33,6 +33,15 @@ export async function PATCH(
     const patch: Record<string, unknown> = {};
     if (input.status) patch.status = input.status;
     if (input.assignedClerkUserId !== undefined) {
+      if (input.assignedClerkUserId) {
+        const assigneeExists = input.assignedClerkUserId === (access as any).company.ownerClerkUserId
+          || await CompanyMembership.exists({
+            companyId,
+            clerkUserId: input.assignedClerkUserId,
+            status: "ACTIVE",
+          });
+        if (!assigneeExists) throw new Error("Wybrany pracownik nie ma aktywnego dostępu do tej firmy.");
+      }
       patch.assignedClerkUserId = input.assignedClerkUserId || null;
     }
     if (input.note) patch.notes = [String((before as any).notes || ""), input.note].filter(Boolean).join("\n\n");

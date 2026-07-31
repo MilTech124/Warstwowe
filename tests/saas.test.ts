@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { companyInvitationClaimFilter, normalizeCompanyEmail } from "../src/domain/companyMembership";
 import { resolveEntitlements } from "../src/domain/entitlements";
 import { PACKAGE_DEFINITIONS, packagePriceGross } from "../src/domain/plans";
 import { resolvePayUChargePrice } from "../src/server/payu/pricing";
@@ -9,6 +10,20 @@ const activeInput = {
   periodEnd: "2030-01-01T00:00:00.000Z",
   now: new Date("2026-07-28T00:00:00.000Z"),
 };
+
+test("zaproszenie pracownika jest wiązane z konkretną firmą i zweryfikowanym adresem", () => {
+  assert.equal(normalizeCompanyEmail("  Pracownik@Firma.PL "), "pracownik@firma.pl");
+  assert.deepEqual(companyInvitationClaimFilter("company-a", " Pracownik@Firma.PL "), {
+    companyId: "company-a",
+    email: "pracownik@firma.pl",
+    status: "INVITED",
+    clerkUserId: { $exists: false },
+  });
+  assert.notDeepEqual(
+    companyInvitationClaimFilter("company-a", "pracownik@firma.pl"),
+    companyInvitationClaimFilter("company-b", "pracownik@firma.pl"),
+  );
+});
 
 test("pakiety mają uzgodnione ceny brutto i rabat 10% za sześć miesięcy", () => {
   assert.deepEqual(

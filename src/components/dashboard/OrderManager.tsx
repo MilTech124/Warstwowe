@@ -72,7 +72,8 @@ export function OrderManager({
           {team.map((member: any) => {
             const data = member.publicUserData || {};
             const label = [data.firstName, data.lastName].filter(Boolean).join(" ") || data.identifier || member.id;
-            return <option key={member.id} value={member.id}>{label}</option>;
+            if (!data.userId || member.status !== "ACTIVE") return null;
+            return <option key={member.id} value={data.userId}>{label}</option>;
           })}
         </select>
       </label>

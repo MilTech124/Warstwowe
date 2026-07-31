@@ -39,7 +39,7 @@ Pełna instrukcja konfiguracji konta, POS, webhooków i testów: [`docs/PAYU.md`
 - `/[firma]/dashboard/orders` — CRM zamówień
 - `/[firma]/dashboard/settings` — szkic i publikacja ustawień
 - `/[firma]/dashboard/catalog` — katalog dostępny firmie
-- `/[firma]/dashboard/team` — konta Clerk Organization
+- `/[firma]/dashboard/team` — pracownicy firmy powiązani wspólnym `companyId`
 - `/[firma]/dashboard/billing` — pakiet i płatności
 - `/[firma]/dashboard/audit` — dziennik aktywności
 - `/superadmin` — centrum właściciela SaaS

@@ -25,9 +25,13 @@ export default async function CompanyDashboardLayout({
   if (!(company as any).demo) {
     const identity = await getRequestIdentity();
     if (!identity.userId) redirect(`/logowanie?redirect_url=/${firma}/dashboard`);
-    if (!identity.isSuperadmin && identity.orgId !== (company as any).clerkOrgId) notFound();
-    role = (await requireCompanyMember(firma)).companyRole;
-    superadminAccess = identity.isSuperadmin;
+    try {
+      const access = await requireCompanyMember(firma);
+      role = access.companyRole;
+      superadminAccess = identity.isSuperadmin;
+    } catch {
+      notFound();
+    }
   }
 
   return (

@@ -1,4 +1,6 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { companyInvitationClaimFilter, normalizeCompanyEmail } from "@/domain/companyMembership";
+import { CompanyMembership } from "@/server/db/models";
 import { findCompanyBySlug } from "@/server/services/companyService";
 import type { CompanyRole } from "@/types/saas";
 
@@ -21,15 +23,46 @@ export function isSuperadminId(userId: string | null | undefined) {
 
 export async function getRequestIdentity() {
   if (!clerkConfigured()) {
-    return { userId: null, orgId: null, orgRole: null, isSuperadmin: false };
+    return { userId: null, isSuperadmin: false };
   }
   const identity = await auth();
   return {
     userId: identity.userId,
-    orgId: identity.orgId,
-    orgRole: identity.orgRole,
     isSuperadmin: isSuperadminId(identity.userId),
   };
+}
+
+async function resolveCompanyRole(company: any, userId: string): Promise<CompanyRole | null> {
+  if (userId === company.ownerClerkUserId) return "OWNER";
+
+  const activeMembership: any = await CompanyMembership.findOne({
+    companyId: company._id,
+    clerkUserId: userId,
+    status: "ACTIVE",
+  }).lean();
+  if (activeMembership) return activeMembership.role as CompanyRole;
+
+  const client = await clerkClient();
+  const user = await client.users.getUser(userId);
+  const primaryEmailAddress = user.primaryEmailAddress?.emailAddress;
+  const primaryEmail = primaryEmailAddress ? normalizeCompanyEmail(primaryEmailAddress) : null;
+  const emailVerified = user.primaryEmailAddress?.verification?.status === "verified";
+  if (!primaryEmail || !emailVerified) return null;
+
+  const claimedMembership: any = await CompanyMembership.findOneAndUpdate(
+    companyInvitationClaimFilter(company._id, primaryEmail),
+    {
+      $set: {
+        clerkUserId: userId,
+        firstName: user.firstName || undefined,
+        lastName: user.lastName || undefined,
+        status: "ACTIVE",
+        joinedAt: new Date(),
+      },
+    },
+    { new: true },
+  );
+  return claimedMembership?.role as CompanyRole || null;
 }
 
 export async function requireSuperadmin() {
@@ -52,14 +85,8 @@ export async function requireCompanyMember(
     return { ...identity, companyRole: "OWNER" as CompanyRole, company, superadminAccess: true };
   }
 
-  if (identity.orgId !== (company as any).clerkOrgId) throw new Error("COMPANY_ACCESS_DENIED");
-
-  const companyRole: CompanyRole =
-    identity.userId === (company as any).ownerClerkUserId
-      ? "OWNER"
-      : identity.orgRole === "org:admin"
-        ? "ADMIN"
-        : "SALESPERSON";
+  const companyRole = await resolveCompanyRole(company, identity.userId);
+  if (!companyRole) throw new Error("COMPANY_ACCESS_DENIED");
 
   if (!allowedRoles.includes(companyRole)) throw new Error("ROLE_ACCESS_DENIED");
   return { ...identity, companyRole, company, superadminAccess: false };
@@ -71,35 +98,5 @@ export function requireCompanyWriteIntent(
 ) {
   if (access.superadminAccess && request.headers.get("x-superadmin-write-intent") !== "confirmed") {
     throw new Error("SUPERADMIN_READ_ONLY_MODE");
-  }
-}
-
-export async function createClerkOrganization(name: string, slug: string, userId: string) {
-  if (!clerkConfigured()) throw new Error("CLERK_NOT_CONFIGURED");
-  const client = await clerkClient();
-  try {
-    return await client.organizations.createOrganization({
-      name,
-      slug,
-      createdBy: userId,
-    });
-  } catch (error: any) {
-    const clerkDetails = [
-      error?.message,
-      error?.errors?.[0]?.message,
-      error?.errors?.[0]?.longMessage,
-      error?.errors?.[0]?.long_message,
-    ].filter(Boolean).join(" ").toLowerCase();
-    const organizationsDisabled = error?.status === 403
-      || error?.statusCode === 403
-      || clerkDetails.includes("organizations feature is not enabled")
-      || clerkDetails === "forbidden";
-
-    if (organizationsDisabled) {
-      throw new Error(
-        "Organizacje Clerk nie są włączone. Administrator aplikacji musi aktywować Organizations w panelu Clerk.",
-      );
-    }
-    throw error;
   }
 }

@@ -46,7 +46,13 @@ const clerkAppearance = {
   },
 };
 
-export function AuthScreen({ mode }: { mode: "sign-in" | "sign-up" }) {
+export function AuthScreen({
+  mode,
+  redirectUrl,
+}: {
+  mode: "sign-in" | "sign-up";
+  redirectUrl?: string;
+}) {
   const configured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
   const isSignIn = mode === "sign-in";
 
@@ -130,6 +136,7 @@ export function AuthScreen({ mode }: { mode: "sign-in" | "sign-up" }) {
                 path="/logowanie"
                 routing="path"
                 signUpUrl="/rejestracja"
+                forceRedirectUrl={redirectUrl}
                 fallbackRedirectUrl="/onboarding"
                 appearance={clerkAppearance}
               />
@@ -138,6 +145,7 @@ export function AuthScreen({ mode }: { mode: "sign-in" | "sign-up" }) {
                 path="/rejestracja"
                 routing="path"
                 signInUrl="/logowanie"
+                forceRedirectUrl={redirectUrl}
                 fallbackRedirectUrl="/onboarding"
                 appearance={clerkAppearance}
               />

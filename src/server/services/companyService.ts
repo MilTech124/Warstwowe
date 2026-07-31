@@ -177,7 +177,6 @@ export async function findCompanyBySlug(slug: string) {
       displayName: "SteelCraft Demo",
       code: "DEMO",
       status: "ACTIVE",
-      clerkOrgId: "demo-org",
       ownerClerkUserId: "demo-owner",
       branding: demoBootstrap().company.branding,
       demo: true,

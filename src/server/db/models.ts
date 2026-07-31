@@ -23,7 +23,6 @@ const brandingSchema = new Schema(
 
 const companySchema = new Schema(
   {
-    clerkOrgId: { type: String, required: true, unique: true, index: true },
     ownerClerkUserId: { type: String, required: true, index: true },
     slug: { type: String, required: true, unique: true, lowercase: true, trim: true },
     displayName: { type: String, required: true, trim: true },
@@ -38,6 +37,27 @@ const companySchema = new Schema(
     },
   },
   timestamps,
+);
+
+const companyMembershipSchema = new Schema(
+  {
+    companyId: { type: Schema.Types.ObjectId, required: true, index: true, ref: "Company" },
+    clerkUserId: { type: String, index: true },
+    email: { type: String, required: true, lowercase: true, trim: true },
+    firstName: String,
+    lastName: String,
+    role: { type: String, enum: ["OWNER", "ADMIN", "SALESPERSON"], required: true },
+    status: { type: String, enum: ["INVITED", "ACTIVE", "DISABLED"], default: "INVITED", index: true },
+    invitedByClerkUserId: String,
+    invitedAt: Date,
+    joinedAt: Date,
+  },
+  timestamps,
+);
+companyMembershipSchema.index({ companyId: 1, email: 1 }, { unique: true });
+companyMembershipSchema.index(
+  { companyId: 1, clerkUserId: 1 },
+  { unique: true, partialFilterExpression: { clerkUserId: { $type: "string" } } },
 );
 
 const companySettingsSchema = new Schema(
@@ -296,6 +316,8 @@ const auditLogSchema = new Schema(
 );
 
 export const Company = models.Company || model("Company", companySchema);
+export const CompanyMembership =
+  models.CompanyMembership || model("CompanyMembership", companyMembershipSchema);
 export const CompanySettings = models.CompanySettings || model("CompanySettings", companySettingsSchema);
 export const Plan = models.Plan || model("Plan", planSchema);
 export const PlanVersion = models.PlanVersion || model("PlanVersion", planVersionSchema);
