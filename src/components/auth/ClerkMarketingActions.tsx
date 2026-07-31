@@ -19,17 +19,17 @@ export function ClerkMarketingActions() {
   return (
     <>
       <Show when="signed-out">
-        <SignInButton forceRedirectUrl="/onboarding">
+        <SignInButton forceRedirectUrl="/panel">
           <button className="pm-auth-link" type="button">Zaloguj się</button>
         </SignInButton>
-        <SignUpButton forceRedirectUrl="/onboarding">
+        <SignUpButton forceRedirectUrl="/panel">
           <button className="pm-button pm-button-nav" type="button">
             Załóż firmę <ArrowRight size={15} />
           </button>
         </SignUpButton>
       </Show>
       <Show when="signed-in">
-        <Link className="pm-auth-link" href="/onboarding">Przejdź do firmy</Link>
+        <Link className="pm-auth-link" href="/panel">Przejdź do firmy</Link>
         <UserButton
           showName
           userProfileMode="modal"

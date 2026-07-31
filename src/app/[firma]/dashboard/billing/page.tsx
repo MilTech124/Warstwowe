@@ -4,10 +4,24 @@ import { PageHeading, StatusBadge } from "@/components/dashboard/DashboardBits";
 import { assertCompanyDashboardRole, getCompanyPayments, getDashboardOverview } from "@/server/services/dashboardService";
 import type { PackageCode } from "@/types/saas";
 import { getAvailablePlans } from "@/server/services/planService";
+import { reconcileLatestCompanyPayment } from "@/server/services/paymentStatusService";
 
-export default async function BillingPage({ params }: { params: Promise<{ firma: string }> }) {
+export default async function BillingPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ firma: string }>;
+  searchParams: Promise<{ payu?: string }>;
+}) {
   const { firma } = await params;
-  await assertCompanyDashboardRole(firma, ["OWNER"]);
+  const access: any = await assertCompanyDashboardRole(firma, ["OWNER"]);
+  if ((await searchParams).payu === "return" && access?.company?._id) {
+    try {
+      await reconcileLatestCompanyPayment(access.company._id);
+    } catch {
+      // The signed webhook can still complete the update asynchronously.
+    }
+  }
   const [overview, payments, plans] = await Promise.all([
     getDashboardOverview(firma),
     getCompanyPayments(firma),

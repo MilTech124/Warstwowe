@@ -137,7 +137,7 @@ export function AuthScreen({
                 routing="path"
                 signUpUrl="/rejestracja"
                 forceRedirectUrl={redirectUrl}
-                fallbackRedirectUrl="/onboarding"
+                fallbackRedirectUrl="/panel"
                 appearance={clerkAppearance}
               />
             ) : (
@@ -146,7 +146,7 @@ export function AuthScreen({
                 routing="path"
                 signInUrl="/logowanie"
                 forceRedirectUrl={redirectUrl}
-                fallbackRedirectUrl="/onboarding"
+                fallbackRedirectUrl="/panel"
                 appearance={clerkAppearance}
               />
             )

@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   CalendarClock,
   ExternalLink,
+  Eye,
   LoaderCircle,
   Save,
   Search,
@@ -124,6 +125,9 @@ export function CompaniesManager({ companies }: { companies: any[] }) {
                   <SuperadminStatus status={company.subscription?.status || "ONBOARDING"} />
                   <Link href={`/${company.slug}/dashboard`} target="_blank" rel="noreferrer" className="sa-supervision-link" title="Wejdź w trybie nadzoru">
                     <ShieldAlert size={15} /> Nadzór <ExternalLink size={13} />
+                  </Link>
+                  <Link href={`/${company.slug}`} target="_blank" rel="noreferrer" className="sa-supervision-link" title="Otwórz publiczny konfigurator firmy">
+                    <Eye size={15} /> Konfigurator <ExternalLink size={13} />
                   </Link>
                 </div>
               </header>

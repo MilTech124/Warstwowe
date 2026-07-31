@@ -11,7 +11,7 @@ import {
   Payment,
   Subscription,
 } from "@/server/db/models";
-import { applicationUrl, createPayUOrder, payuConfigured } from "@/server/payu/client";
+import { createPayUOrder, payuConfigured } from "@/server/payu/client";
 import { payUPriceDescription, resolvePayUChargePrice } from "@/server/payu/pricing";
 import { seedSaasCatalog } from "@/server/seed";
 import { writeAudit } from "@/server/audit";
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     const input = onboardingSchema.parse(await request.json());
+    const requestOrigin = new URL(request.url).origin;
     if (input.billingMode === "RECURRING_MONTHLY" && !input.cardToken) {
       return NextResponse.json({ error: "Brakuje tokena bezpiecznego formularza PayU." }, { status: 400 });
     }
@@ -163,8 +164,8 @@ export async function POST(request: NextRequest) {
         },
         token: input.billingMode === "RECURRING_MONTHLY" ? input.cardToken : undefined,
         recurring: input.billingMode === "RECURRING_MONTHLY" ? "FIRST" : undefined,
-        continueUrl: `${applicationUrl()}/${input.slug}/dashboard/billing?payu=return`,
-        notifyUrl: `${applicationUrl()}/api/payu/notify`,
+        continueUrl: `${requestOrigin}/${input.slug}/dashboard/billing?payu=return`,
+        notifyUrl: `${requestOrigin}/api/payu/notify`,
       });
       await Payment.updateOne(
         { _id: payment._id },

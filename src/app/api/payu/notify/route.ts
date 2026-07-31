@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { connectMongo } from "@/server/db/connection";
-import { Payment, Subscription, WebhookEvent } from "@/server/db/models";
+import { WebhookEvent } from "@/server/db/models";
 import { verifyPayUSignature } from "@/server/payu/client";
-import { writeAudit } from "@/server/audit";
+import { applyPayUOrderStatus } from "@/server/services/paymentStatusService";
 
 export const runtime = "nodejs";
 
@@ -39,64 +39,13 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    const payment: any = await Payment.findOne({ extOrderId: payuOrder.extOrderId });
-    if (!payment) {
+    const result = await applyPayUOrderStatus(payuOrder, payload);
+    if (!result.applied) {
       await WebhookEvent.updateOne(
         { eventKey },
-        { $set: { processedAt: new Date(), processingError: "PAYMENT_NOT_FOUND" } },
+        { $set: { processedAt: new Date(), processingError: result.reason } },
       );
       return new NextResponse(null, { status: 200 });
-    }
-
-    payment.payuOrderId = payuOrder.orderId;
-    payment.status = payuOrder.status;
-    payment.rawStatus = payload;
-    await payment.save();
-    const subscription: any = await Subscription.findById(payment.subscriptionId);
-    if (subscription) {
-      if (payuOrder.status === "COMPLETED") {
-        if (Number(payment.amountGross) === 0) {
-          subscription.status = "TRIALING";
-          subscription.trialEndsAt = payment.periodEnd;
-          subscription.currentPeriodStart = payment.periodStart;
-          subscription.currentPeriodEnd = payment.periodEnd;
-        } else {
-          subscription.status = "ACTIVE";
-          subscription.trialEndsAt = undefined;
-          subscription.currentPeriodStart = payment.periodStart;
-          subscription.currentPeriodEnd = payment.periodEnd;
-          subscription.lastPaymentAt = new Date();
-          if (payment.packageCode) {
-            subscription.packageCode = payment.packageCode;
-            subscription.scheduledPackageCode = undefined;
-            subscription.amountGross = payment.catalogAmountGross || payment.amountGross;
-          }
-        }
-        await subscription.save();
-        await writeAudit({
-          companyId: payment.companyId,
-          actorType: "SYSTEM",
-          action: Number(payment.amountGross) === 0 ? "subscription.trial_started" : "subscription.renewed",
-          entityType: "Subscription",
-          entityId: String(subscription._id),
-          after: {
-            status: subscription.status,
-            packageCode: subscription.packageCode,
-            currentPeriodEnd: subscription.currentPeriodEnd,
-          },
-        });
-      } else if (payuOrder.status === "CANCELED") {
-        subscription.status = Number(payment.amountGross) === 0 ? "ONBOARDING" : "PAYMENT_FAILED";
-        await subscription.save();
-        await writeAudit({
-          companyId: payment.companyId,
-          actorType: "SYSTEM",
-          action: "subscription.payment_failed",
-          entityType: "Subscription",
-          entityId: String(subscription._id),
-          after: { status: subscription.status, extOrderId: payment.extOrderId },
-        });
-      }
     }
     await WebhookEvent.updateOne({ eventKey }, { $set: { processedAt: new Date() } });
     return new NextResponse(null, { status: 200 });

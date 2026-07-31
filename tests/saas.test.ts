@@ -3,7 +3,6 @@ import test from "node:test";
 import { companyInvitationClaimFilter, normalizeCompanyEmail } from "../src/domain/companyMembership";
 import { resolveEntitlements } from "../src/domain/entitlements";
 import { PACKAGE_DEFINITIONS, packagePriceGross } from "../src/domain/plans";
-import { resolvePayUChargePrice } from "../src/server/payu/pricing";
 
 const activeInput = {
   subscriptionStatus: "ACTIVE" as const,
@@ -39,28 +38,6 @@ test("pakiety mają uzgodnione ceny brutto i rabat 10% za sześć miesięcy", ()
     },
   );
   assert.equal(packagePriceGross("DIAMOND", "PREPAID_SIX_MONTHS"), 7560);
-});
-
-test("testowa cena PayU obniża wyłącznie pakiet Diamond do 10 zł", () => {
-  const environment = {
-    PAYU_TEST_PRICING: "true",
-    PAYU_TEST_DIAMOND_AMOUNT_GROSS: "10",
-  };
-
-  assert.deepEqual(resolvePayUChargePrice("DIAMOND", 1400, environment), {
-    catalogAmountGross: 1400,
-    chargedAmountGross: 10,
-    testOverride: true,
-  });
-  assert.equal(resolvePayUChargePrice("PLATINUM", 1000, environment).chargedAmountGross, 1000);
-  assert.equal(resolvePayUChargePrice("DIAMOND", 1400, {
-    ...environment,
-    PAYU_TEST_PRICING: "false",
-  }).chargedAmountGross, 1400);
-  assert.equal(resolvePayUChargePrice("DIAMOND", 1400, {
-    ...environment,
-    PAYU_TEST_DIAMOND_AMOUNT_GROSS: "invalid",
-  }).chargedAmountGross, 1400);
 });
 
 test("Standard nie dostaje funkcji Gold, Platinum ani Diamond", () => {

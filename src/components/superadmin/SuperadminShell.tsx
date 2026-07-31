@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Boxes, Menu, PanelLeftClose, ShieldCheck, X } from "lucide-react";
+import { Bell, Boxes, Building2, Menu, PanelLeftClose, ShieldCheck, X } from "lucide-react";
 import { SuperadminNav } from "@/components/superadmin/SuperadminNav";
 
 const sectionNames: Record<string, string> = {
@@ -57,6 +57,7 @@ export function SuperadminShell({ children }: { children: React.ReactNode }) {
             <span className="sa-pulse" aria-hidden="true" />
             <div><strong>System operacyjny</strong><small>Globalna kontrola aktywna</small></div>
           </div>
+          <Link href="/panel" className="sa-exit-link"><Building2 size={16} /> Moja firma</Link>
           <Link href="/" className="sa-exit-link"><PanelLeftClose size={16} /> Wyjdź do serwisu</Link>
         </div>
       </aside>

@@ -122,6 +122,24 @@ export async function createPayUOrder(input: PayUOrderRequest) {
   return parsePayUResponse(response);
 }
 
+export async function retrievePayUOrder(orderId: string) {
+  const accessToken = await getPayUOAuthToken();
+  const response = await fetch(`${payuBaseUrl()}/api/v2_1/orders/${encodeURIComponent(orderId)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+    },
+    cache: "no-store",
+  });
+  const payload = await parsePayUResponse(response);
+  return {
+    order: Array.isArray(payload.orders) ? payload.orders[0] : null,
+    payload,
+  };
+}
+
 export async function retrievePayUTokens(email: string, extCustomerId: string) {
   const accessToken = await getPayUOAuthToken({ email, extCustomerId });
   const response = await fetch(`${payuBaseUrl()}/api/v2_1/paymethods`, {
@@ -157,5 +175,15 @@ export function verifyPayUSignature(rawBody: string, signatureHeader: string | n
 }
 
 export function applicationUrl() {
-  return (process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  const configuredIsLocal = configured
+    ? /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configured)
+    : false;
+  const isVercelProduction = process.env.VERCEL_ENV === "production";
+
+  if (configured && !(isVercelProduction && configuredIsLocal)) return configured;
+
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  if (vercelHost) return `https://${vercelHost.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
+  return configured || "http://127.0.0.1:3000";
 }

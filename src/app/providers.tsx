@@ -13,8 +13,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       telemetry={false}
       signInUrl="/logowanie"
       signUpUrl="/rejestracja"
-      signInFallbackRedirectUrl="/onboarding"
-      signUpFallbackRedirectUrl="/onboarding"
+      signInFallbackRedirectUrl="/panel"
+      signUpFallbackRedirectUrl="/panel"
     >
       {children}
     </ClerkProvider>

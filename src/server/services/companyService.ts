@@ -7,6 +7,7 @@ import {
   CatalogManufacturer,
   CatalogProduct,
   Company,
+  CompanyMembership,
   CompanySettings,
   FeatureOverride,
   MaterialFinish,
@@ -188,6 +189,23 @@ export async function findCompanyBySlug(slug: string) {
   } catch {
     // Public routes should degrade to not-found instead of returning 500
     // during temporary DNS or Atlas availability problems.
+    return null;
+  }
+}
+
+export async function findCompanyForUser(clerkUserId: string) {
+  try {
+    if (!(await connectMongo())) return null;
+    const ownedCompany = await Company.findOne({ ownerClerkUserId: clerkUserId }).lean();
+    if (ownedCompany) return ownedCompany;
+
+    const membership: any = await CompanyMembership.findOne({
+      clerkUserId,
+      status: "ACTIVE",
+    }).lean();
+    if (!membership) return null;
+    return Company.findById(membership.companyId).lean();
+  } catch {
     return null;
   }
 }

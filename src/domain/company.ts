@@ -7,6 +7,7 @@ export const RESERVED_COMPANY_SLUGS = new Set([
   "logowanie",
   "rejestracja",
   "onboarding",
+  "panel",
   "cennik",
   "demo",
   "_next",

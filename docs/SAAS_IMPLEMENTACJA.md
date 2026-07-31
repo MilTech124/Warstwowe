@@ -27,6 +27,7 @@ Docelowo każda firma otrzymuje:
 - `/rejestracja` — rejestracja użytkownika przez Clerk.
 - `/logowanie` — logowanie przez Clerk.
 - `/onboarding` — utworzenie firmy, wybór slugu, pakietu i sposobu płatności.
+- `/panel` — rozpoznanie zalogowanego użytkownika i przekierowanie do jego istniejącej firmy; superadmin bez firmy trafia do `/superadmin`.
 - `/{firma}` — publiczny konfigurator konkretnej firmy.
 
 Jeżeli firma nie ma aktywnego dostępu, jej publiczna ścieżka pokazuje brandowany komunikat:
@@ -53,7 +54,9 @@ Jeżeli firma nie ma aktywnego dostępu, jej publiczna ścieżka pokazuje brando
 - `/superadmin/billing` — płatności, webhooki i błędy odnowień.
 - `/superadmin/audit` — globalny audyt zmian.
 
-Statyczne nazwy, takie jak `api`, `superadmin`, `logowanie`, `rejestracja`, `onboarding` i `demo`, są zablokowane jako slug firmy.
+Statyczne nazwy, takie jak `api`, `superadmin`, `logowanie`, `rejestracja`, `onboarding`, `panel` i `demo`, są zablokowane jako slug firmy.
+
+Po powrocie z PayU oraz przy wejściu przez `/panel` aplikacja może uzgodnić ostatni status płatności bezpośrednio z API PayU. Pozwala to aktywować opłacony pakiet także wtedy, gdy webhook jest opóźniony albo jego wcześniejsze przetwarzanie zostało przerwane.
 
 ## 3. Pakiety i centralne uprawnienia
 
@@ -333,8 +336,8 @@ Nowe wydzielone arkusze:
 Aktualny wynik:
 
 - 51 testów regresji istniejącego konfiguratora 3D,
-- 7 testów pakietów, resolvera SaaS i izolacji członkostwa firmy,
-- łącznie 58 zaliczonych testów,
+- 6 testów pakietów, resolvera SaaS i izolacji członkostwa firmy,
+- łącznie 57 zaliczonych testów,
 - produkcyjny `npm run build` przechodzi,
 - `/` zwraca HTTP 200,
 - `/demo` zwraca HTTP 200,

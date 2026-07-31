@@ -42,6 +42,7 @@ Pełna instrukcja konfiguracji konta, POS, webhooków i testów: [`docs/PAYU.md`
 - `/[firma]/dashboard/team` — pracownicy firmy powiązani wspólnym `companyId`
 - `/[firma]/dashboard/billing` — pakiet i płatności
 - `/[firma]/dashboard/audit` — dziennik aktywności
+- `/panel` — automatyczne wejście do istniejącej firmy lub panelu superadmina
 - `/superadmin` — centrum właściciela SaaS
 
 ## Weryfikacja
