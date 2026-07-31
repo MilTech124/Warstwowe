@@ -1,6 +1,9 @@
 import type { PackageCode } from "@/types/saas";
 
-type PricingEnvironment = Pick<NodeJS.ProcessEnv, "PAYU_TEST_PRICING" | "PAYU_TEST_DIAMOND_AMOUNT_GROSS">;
+type PricingEnvironment = {
+  PAYU_TEST_PRICING?: string;
+  PAYU_TEST_DIAMOND_AMOUNT_GROSS?: string;
+};
 
 export type PayUChargePrice = {
   catalogAmountGross: number;
@@ -11,7 +14,10 @@ export type PayUChargePrice = {
 export function resolvePayUChargePrice(
   packageCode: PackageCode,
   catalogAmountGross: number,
-  environment: PricingEnvironment = process.env,
+  environment: PricingEnvironment = {
+    PAYU_TEST_PRICING: process.env.PAYU_TEST_PRICING,
+    PAYU_TEST_DIAMOND_AMOUNT_GROSS: process.env.PAYU_TEST_DIAMOND_AMOUNT_GROSS,
+  },
 ): PayUChargePrice {
   const requestedAmount = Number(environment.PAYU_TEST_DIAMOND_AMOUNT_GROSS);
   const testAmountIsValid = Number.isInteger(requestedAmount)
