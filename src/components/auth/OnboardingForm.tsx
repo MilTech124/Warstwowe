@@ -55,9 +55,11 @@ const billingOptions: Array<{
 export function OnboardingForm({
   initialPlan,
   plans = Object.values(PACKAGE_DEFINITIONS),
+  diamondTestAmountGross = null,
 }: {
   initialPlan?: string;
   plans?: PackageDefinition[];
+  diamondTestAmountGross?: number | null;
 }) {
   const authEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
   const { isSignedIn } = useAuth();
@@ -77,6 +79,11 @@ export function OnboardingForm({
   const amount = billingMode === "PREPAID_SIX_MONTHS"
     ? selectedPlan.prepaidSixMonthsGross
     : selectedPlan.monthlyGross;
+  const testPriceActive = packageCode === "DIAMOND"
+    && diamondTestAmountGross !== null
+    && diamondTestAmountGross > 0
+    && diamondTestAmountGross < amount;
+  const chargedAmount = testPriceActive ? diamondTestAmountGross : amount;
 
   const slugSuggestion = useMemo(
     () => companyName
@@ -91,12 +98,12 @@ export function OnboardingForm({
 
   function billingDescription(mode: BillingMode) {
     if (mode === "RECURRING_MONTHLY") {
-      return `Po trialu ${selectedPlan.monthlyGross} zł / mies.`;
+      return `Po trialu ${testPriceActive ? chargedAmount : selectedPlan.monthlyGross} zł / mies.${testPriceActive ? " w teście" : ""}`;
     }
     if (mode === "PREPAID_SIX_MONTHS") {
-      return `Jednorazowo ${selectedPlan.prepaidSixMonthsGross} zł`;
+      return `Jednorazowo ${testPriceActive ? chargedAmount : selectedPlan.prepaidSixMonthsGross} zł${testPriceActive ? " w teście" : ""}`;
     }
-    return `Jednorazowo ${selectedPlan.monthlyGross} zł`;
+    return `Jednorazowo ${testPriceActive ? chargedAmount : selectedPlan.monthlyGross} zł${testPriceActive ? " w teście" : ""}`;
   }
 
   async function submit(event: React.FormEvent) {
@@ -294,8 +301,24 @@ export function OnboardingForm({
                 : billingMode === "PREPAID_SIX_MONTHS" ? "6 miesięcy" : "1 miesiąc"}
             </strong>
           </span>
-          <span><small>Wartość</small><strong>{amount} zł brutto</strong></span>
+          <span>
+            <small>{testPriceActive ? "Kwota testowa PayU" : "Wartość"}</small>
+            <strong>{chargedAmount} zł brutto</strong>
+          </span>
+          {testPriceActive && (
+            <span><small>Cena katalogowa</small><strong><s>{amount} zł</s></strong></span>
+          )}
         </div>
+
+        {testPriceActive && (
+          <div className="pm-trial-summary pm-payment-summary" role="status">
+            <BadgeCheck size={17} />
+            <span>
+              <strong>Kontrolowany test: {chargedAmount} zł</strong>
+              <small>PayU otrzyma zamówienie dokładnie na tę kwotę.</small>
+            </span>
+          </div>
+        )}
 
         {billingMode === "RECURRING_MONTHLY" ? (
           <div className="pm-trial-summary">

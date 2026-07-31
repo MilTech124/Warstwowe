@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, Check, Layers3, ShieldCheck } from "lucide-react";
 import { OnboardingForm } from "@/components/auth/OnboardingForm";
+import { resolvePayUChargePrice } from "@/server/payu/pricing";
 import { getAvailablePlans } from "@/server/services/planService";
 import "../marketing-premium.css";
 
@@ -11,6 +12,10 @@ export default async function OnboardingPage({
 }) {
   const { plan } = await searchParams;
   const plans = await getAvailablePlans();
+  const diamondPlan = plans.find((item) => item.code === "DIAMOND");
+  const diamondTestPrice = diamondPlan
+    ? resolvePayUChargePrice("DIAMOND", diamondPlan.monthlyGross)
+    : null;
 
   return (
     <main className="pm-page pm-onboarding-page">
@@ -42,7 +47,13 @@ export default async function OnboardingPage({
           <h1>Skonfiguruj przestrzeń swojej firmy.</h1>
           <p>Wybierz adres konfiguratora, pakiet i wygodny sposób rozliczenia.</p>
         </div>
-        <OnboardingForm initialPlan={plan} plans={plans} />
+        <OnboardingForm
+          initialPlan={plan}
+          plans={plans}
+          diamondTestAmountGross={diamondTestPrice?.testOverride
+            ? diamondTestPrice.chargedAmountGross
+            : null}
+        />
       </section>
     </main>
   );

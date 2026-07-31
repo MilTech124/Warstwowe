@@ -1,6 +1,6 @@
 # Implementacja wielofirmowej aplikacji SaaS
 
-Data aktualizacji: 30 lipca 2026
+Data aktualizacji: 31 lipca 2026
 
 ## 1. Cel zmian
 
@@ -332,9 +332,9 @@ Nowe wydzielone arkusze:
 
 Aktualny wynik:
 
-- 47 testów regresji istniejącego konfiguratora 3D,
-- 5 testów pakietów i resolvera SaaS,
-- łącznie 52 zaliczone testy,
+- 51 testów regresji istniejącego konfiguratora 3D,
+- 7 testów pakietów, resolvera SaaS i izolacji członkostwa firmy,
+- łącznie 58 zaliczonych testów,
 - produkcyjny `npm run build` przechodzi,
 - `/` zwraca HTTP 200,
 - `/demo` zwraca HTTP 200,
