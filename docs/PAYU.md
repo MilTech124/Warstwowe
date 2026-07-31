@@ -115,7 +115,7 @@ Kart z „domyślnym” wynikiem 3DS PayU nie pozwala używać do zapisania toke
 
 ## 6. Test automatycznego odnowienia
 
-Cron z `vercel.json` działa co 5 minut:
+Cron z `vercel.json` na planie Vercel Hobby działa raz dziennie:
 
 ```text
 GET /api/cron/subscriptions
@@ -135,6 +135,8 @@ Następnie wywołaj cron:
 $headers = @{ Authorization = "Bearer $env:CRON_SECRET" }
 Invoke-RestMethod -Method Get -Uri "https://PUBLICZNY_ADRES/api/cron/subscriptions" -Headers $headers
 ```
+
+Na planie Pro można wrócić do harmonogramu co 5 minut (`*/5 * * * *`), jeżeli odnowienia mają być obsługiwane szybciej. Na Hobby test odnowienia najlepiej uruchamiać ręcznie przez powyższy endpoint.
 
 Oczekiwany przebieg:
 

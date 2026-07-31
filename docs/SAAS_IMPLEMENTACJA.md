@@ -261,7 +261,7 @@ Zaimplementowano:
 - rezygnację na koniec opłaconego okresu,
 - automatyczne wygaszanie przedpłat.
 
-Cron odnowień jest skonfigurowany w `vercel.json` i uruchamia się co 5 minut.
+Cron odnowień jest skonfigurowany w `vercel.json`. Na planie Vercel Hobby uruchamia się raz dziennie, ponieważ ten plan nie obsługuje częstszych harmonogramów. Plan Pro pozwala wrócić do harmonogramu co 5 minut.
 
 Aplikacja nie zapisuje numeru karty ani CVV. Lokalnie pozostają wyłącznie identyfikatory PayU oraz maskowane dane karty.
 
@@ -434,7 +434,7 @@ Dodano testy:
 ### Wdrożenie
 
 - [ ] Utworzyć projekt Vercel.
-- [ ] Wybrać plan obsługujący cron co 5 minut.
+- [ ] Na planie Hobby zostawić cron raz dziennie albo wybrać plan Pro dla cron co 5 minut.
 - [ ] Dodać wszystkie zmienne środowiskowe.
 - [ ] Podłączyć domenę produkcyjną.
 - [ ] Skonfigurować adres webhooka PayU.
