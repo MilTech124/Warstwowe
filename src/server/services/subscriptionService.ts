@@ -12,6 +12,7 @@ import {
   createPayUOrder,
   retrievePayUTokens,
 } from "@/server/payu/client";
+import { payUPriceDescription, resolvePayUChargePrice } from "@/server/payu/pricing";
 import type { PackageCode } from "@/types/saas";
 import { getPlanDefinition } from "@/server/services/planService";
 
@@ -79,6 +80,7 @@ export async function processDueSubscriptions(now = new Date()) {
 
       const packageCode = (subscription.scheduledPackageCode || subscription.packageCode) as PackageCode;
       const amountGross = (await getPlanDefinition(packageCode)).monthlyGross;
+      const chargePrice = resolvePayUChargePrice(packageCode, amountGross);
       const periodStart = new Date(dueAt);
       const periodEnd = addBillingPeriod(periodStart, "RECURRING_MONTHLY");
       const extOrderId = `REN-${subscription._id}-${periodStart.getTime()}`;
@@ -87,7 +89,9 @@ export async function processDueSubscriptions(now = new Date()) {
         subscriptionId: subscription._id,
         extOrderId,
         status: "PENDING",
-        amountGross,
+        amountGross: chargePrice.chargedAmountGross,
+        catalogAmountGross: chargePrice.catalogAmountGross,
+        testAmountOverride: chargePrice.testOverride,
         packageCode,
         currency: "PLN",
         billingMode: "RECURRING_MONTHLY",
@@ -96,8 +100,8 @@ export async function processDueSubscriptions(now = new Date()) {
       });
       const payu = await createPayUOrder({
         extOrderId,
-        description: `Odnowienie pakietu ${packageCode}`,
-        totalAmountGrosz: amountGross * 100,
+        description: payUPriceDescription(`Odnowienie pakietu ${packageCode}`, chargePrice),
+        totalAmountGrosz: chargePrice.chargedAmountGross * 100,
         customerIp: "127.0.0.1",
         buyer: {
           email,

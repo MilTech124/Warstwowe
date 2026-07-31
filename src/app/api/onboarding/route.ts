@@ -11,6 +11,7 @@ import {
   Subscription,
 } from "@/server/db/models";
 import { applicationUrl, createPayUOrder, payuConfigured } from "@/server/payu/client";
+import { payUPriceDescription, resolvePayUChargePrice } from "@/server/payu/pricing";
 import { seedSaasCatalog } from "@/server/seed";
 import { writeAudit } from "@/server/audit";
 import { getPlanDefinition } from "@/server/services/planService";
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
     const amountGross = input.billingMode === "PREPAID_SIX_MONTHS"
       ? selectedPlan.prepaidSixMonthsGross
       : selectedPlan.monthlyGross;
+    const chargePrice = resolvePayUChargePrice(input.packageCode, amountGross);
     const subscription = await Subscription.create({
       companyId: company._id,
       packageCode: input.packageCode,
@@ -115,7 +117,7 @@ export async function POST(request: NextRequest) {
     const amountGrosz =
       input.billingMode === "RECURRING_MONTHLY"
         ? 0
-        : amountGross * 100;
+        : chargePrice.chargedAmountGross * 100;
 
     const payment = await Payment.create({
       companyId: company._id,
@@ -123,6 +125,8 @@ export async function POST(request: NextRequest) {
       extOrderId,
       status: "PENDING",
       amountGross: amountGrosz / 100,
+      catalogAmountGross: chargePrice.catalogAmountGross,
+      testAmountOverride: chargePrice.testOverride,
       packageCode: input.packageCode,
       currency: "PLN",
       billingMode: input.billingMode,
@@ -133,10 +137,12 @@ export async function POST(request: NextRequest) {
     try {
       const result = await createPayUOrder({
         extOrderId,
-        description:
+        description: payUPriceDescription(
           input.billingMode === "RECURRING_MONTHLY"
             ? `Weryfikacja karty — trial ${input.packageCode}`
             : `Pakiet ${input.packageCode}`,
+          chargePrice,
+        ),
         totalAmountGrosz: amountGrosz,
         customerIp: clientIp(request),
         buyer: {

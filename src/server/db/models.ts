@@ -172,6 +172,8 @@ const paymentSchema = new Schema(
     payuOrderId: { type: String, index: true },
     status: { type: String, required: true, index: true },
     amountGross: { type: Number, required: true },
+    catalogAmountGross: Number,
+    testAmountOverride: { type: Boolean, default: false },
     packageCode: { type: String, enum: PACKAGE_CODES },
     currency: { type: String, default: "PLN" },
     billingMode: { type: String, enum: BILLING_MODES },

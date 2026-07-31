@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
           if (payment.packageCode) {
             subscription.packageCode = payment.packageCode;
             subscription.scheduledPackageCode = undefined;
-            subscription.amountGross = payment.amountGross;
+            subscription.amountGross = payment.catalogAmountGross || payment.amountGross;
           }
         }
         await subscription.save();

@@ -35,6 +35,8 @@ PAYU_POS_ID=twoj_pos_id
 NEXT_PUBLIC_PAYU_POS_ID=twoj_pos_id
 NEXT_PUBLIC_PAYU_ENV=sandbox
 PAYU_SECOND_KEY=twoj_drugi_klucz_md5
+PAYU_TEST_PRICING=false
+PAYU_TEST_DIAMOND_AMOUNT_GROSS=10
 
 NEXT_PUBLIC_APP_URL=https://publiczny-adres-aplikacji.example
 CRON_SECRET=dlugi-losowy-sekret
@@ -50,6 +52,17 @@ CRON_SECRET=dlugi-losowy-sekret
 | `NEXT_PUBLIC_APP_URL` | baza adresów `continueUrl` i `notifyUrl` |
 
 `PAYU_POS_ID` i `NEXT_PUBLIC_PAYU_POS_ID` muszą wskazywać ten sam POS. Sekretów nie wpisuj do zmiennych `NEXT_PUBLIC_*` ani do repozytorium. Po zmianie zmiennych zrestartuj serwer. Na Vercel wykonaj nowe wdrożenie.
+
+### Kontrolowana cena testowa Diamond
+
+Do kontrolowanej transakcji weryfikacyjnej można obciążyć wyłącznie pakiet Diamond kwotą 10 zł, bez zmiany publicznego cennika i zapisanej ceny katalogowej:
+
+```dotenv
+PAYU_TEST_PRICING=true
+PAYU_TEST_DIAMOND_AMOUNT_GROSS=10
+```
+
+Płatność zostanie oznaczona w PayU prefiksem `[TEST 10 PLN]`. Pozostałe pakiety zachowują zwykłe ceny. Po zakończeniu testów należy bezwzględnie ustawić `PAYU_TEST_PRICING=false` zarówno lokalnie, jak i na Vercel.
 
 ## 3. Webhook PayU
 
