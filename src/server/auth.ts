@@ -77,9 +77,29 @@ export function requireCompanyWriteIntent(
 export async function createClerkOrganization(name: string, slug: string, userId: string) {
   if (!clerkConfigured()) throw new Error("CLERK_NOT_CONFIGURED");
   const client = await clerkClient();
-  return client.organizations.createOrganization({
-    name,
-    slug,
-    createdBy: userId,
-  });
+  try {
+    return await client.organizations.createOrganization({
+      name,
+      slug,
+      createdBy: userId,
+    });
+  } catch (error: any) {
+    const clerkDetails = [
+      error?.message,
+      error?.errors?.[0]?.message,
+      error?.errors?.[0]?.longMessage,
+      error?.errors?.[0]?.long_message,
+    ].filter(Boolean).join(" ").toLowerCase();
+    const organizationsDisabled = error?.status === 403
+      || error?.statusCode === 403
+      || clerkDetails.includes("organizations feature is not enabled")
+      || clerkDetails === "forbidden";
+
+    if (organizationsDisabled) {
+      throw new Error(
+        "Organizacje Clerk nie są włączone. Administrator aplikacji musi aktywować Organizations w panelu Clerk.",
+      );
+    }
+    throw error;
+  }
 }
