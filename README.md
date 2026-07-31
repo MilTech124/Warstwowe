@@ -25,7 +25,7 @@ Pełny onboarding i dashboard wymagają uzupełnienia `.env.local`.
 - Superadmin: lista identyfikatorów Clerk w `CLERK_SUPERADMIN_USER_IDS`
 - PayU: dane POS, OAuth i drugi klucz do podpisów webhooków
 - Vercel Blob: `BLOB_READ_WRITE_TOKEN`
-- Resend: `RESEND_API_KEY`, `MAIL_FROM`
+- Webd SMTP: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`
 - Cron: `CRON_SECRET`
 
 PayU działa domyślnie w Sandbox. Płatności cykliczne i tokenizacja muszą być aktywowane na punkcie płatności przed testami pełnego procesu. Harmonogram odnawiania jest ustawiony na 5 minut w `vercel.json`, co na produkcji wymaga planu Vercel obsługującego taką częstotliwość.

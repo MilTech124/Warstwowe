@@ -1,9 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Resend } from "resend";
 import { z } from "zod";
 import { PACKAGE_DEFINITIONS } from "@/domain/plans";
 import { connectMongo } from "@/server/db/connection";
 import { Company, Counter, Order, OrderEvent } from "@/server/db/models";
+import { isSmtpConfigured, sendTransactionalEmail } from "@/server/email/smtp";
 import { getConfiguratorBootstrap } from "@/server/services/companyService";
 import type { ConfiguratorBootstrap, OrderCreateInput } from "@/types/saas";
 
@@ -106,14 +106,27 @@ async function nextOrderNumber(company: any) {
 }
 
 async function sendOrderNotification(bootstrap: ConfiguratorBootstrap, order: any) {
-  if (!process.env.RESEND_API_KEY || !bootstrap.capabilities.emailNotifications) return;
+  if (!isSmtpConfigured() || !bootstrap.capabilities.emailNotifications) return;
   if (!bootstrap.settings.orderNotificationEmails.length) return;
-  const resend = new Resend(process.env.RESEND_API_KEY);
-  await resend.emails.send({
-    from: process.env.MAIL_FROM || "Konfigurator <noreply@example.pl>",
+
+  const escapeHtml = (value: unknown) => String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+  await sendTransactionalEmail({
     to: bootstrap.settings.orderNotificationEmails,
+    replyTo: order.customer.email,
     subject: `Nowe zamówienie ${order.number}`,
-    html: `<h2>Nowe zamówienie ${order.number}</h2><p>Klient: ${order.customer.name}</p><p>E-mail: ${order.customer.email}</p><p>Telefon: ${order.customer.phone}</p>`,
+    text: [
+      `Nowe zamówienie ${order.number}`,
+      `Klient: ${order.customer.name}`,
+      `E-mail: ${order.customer.email}`,
+      `Telefon: ${order.customer.phone}`,
+    ].join("\n"),
+    html: `<h2>Nowe zamówienie ${escapeHtml(order.number)}</h2><p>Klient: ${escapeHtml(order.customer.name)}</p><p>E-mail: ${escapeHtml(order.customer.email)}</p><p>Telefon: ${escapeHtml(order.customer.phone)}</p>`,
   });
 }
 

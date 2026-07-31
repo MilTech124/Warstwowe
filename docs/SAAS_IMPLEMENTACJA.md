@@ -280,7 +280,7 @@ Dla pakietu Diamond:
 
 Logo firmowe jest przechowywane w publicznym Vercel Blob.
 
-Dodano adapter Resend do wysyłania powiadomień o nowych zamówieniach.
+Dodano adapter SMTP oparty na Nodemailer do wysyłania powiadomień o nowych zamówieniach przez skrzynkę Webd.
 
 ## 10. Bezpieczeństwo
 
@@ -369,7 +369,7 @@ Dodano testy:
 - [ ] Skonfigurować PayU Sandbox.
 - [ ] Uzyskać aktywację tokenizacji i płatności cyklicznych od PayU.
 - [ ] Skonfigurować prywatny i publiczny Vercel Blob.
-- [ ] Skonfigurować Resend oraz zweryfikowaną domenę nadawcy.
+- [ ] Skonfigurować konto SMTP Webd oraz adres nadawcy we wszystkich środowiskach.
 - [ ] Ustawić bezpieczny `CRON_SECRET`.
 - [ ] Uzupełnić wszystkie wartości z `.env.example` na Vercel.
 
@@ -387,7 +387,7 @@ Dodano testy:
 - [ ] Przetestować ponowiony webhook PayU.
 - [ ] Przetestować niepoprawny podpis webhooka.
 - [ ] Przetestować prywatny PDF na produkcyjnym Vercel Blob.
-- [ ] Przetestować wiadomości Resend.
+- [ ] Przetestować wiadomości SMTP Webd, odpowiedzi `reply-to` i dostarczalność.
 
 ### Funkcje wymagające dalszego rozwoju
 
@@ -408,7 +408,7 @@ Dodano testy:
 ### Testy automatyczne przed produkcją
 
 - [ ] Dodać testy integracyjne modeli z testową bazą MongoDB.
-- [ ] Dodać testy endpointów z mockami Clerk, PayU, Blob i Resend.
+- [ ] Dodać testy endpointów z mockami Clerk, PayU, Blob i SMTP.
 - [ ] Dodać Playwright E2E dla rejestracji i onboardingu.
 - [ ] Dodać E2E publicznego zamówienia i dashboardu firmy.
 - [ ] Dodać E2E zmiany pakietu.
@@ -449,7 +449,7 @@ Dodano testy:
 2. Uruchomić onboarding bez płatności na środowisku Preview.
 3. Skonfigurować PayU Sandbox i płatności cykliczne.
 4. Wykonać pełne testy webhooków i odnowień.
-5. Skonfigurować Blob i Resend.
+5. Skonfigurować Blob i SMTP Webd.
 6. Dodać E2E z testową bazą.
 7. Dodać rate limiting, CAPTCHA i monitoring.
 8. Przeprowadzić testy czterech pakietów na czterech firmach.
