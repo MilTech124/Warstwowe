@@ -58,11 +58,16 @@ import {
   getWindowSizeRanges,
   getWallPanelLengthM,
 } from "@/config/catalog";
-import { useConfiguratorStore } from "@/store/configuratorStore";
+import { useConfiguratorStore, useConfiguratorStoreApi } from "@/store/configuratorStore";
 import { cn, formatMeters } from "@/lib/utils";
 import { Field, Select, Slider } from "@/components/ui/Field";
 import { StructurePanel } from "@/components/StructurePanel";
 import { OrderPdfFooter } from "@/components/OrderPdfFooter";
+import {
+  filterAllowedColors,
+  filterAllowedRecord,
+  useConfiguratorAccess,
+} from "@/configurator/ConfiguratorContext";
 import { openingTitle } from "@/lib/openingLabels";
 import { roofPitchBounds } from "@/scene/geometry";
 import {
@@ -74,16 +79,16 @@ import {
 } from "@/config/frontProjection";
 
 const dimensionLabels = {
-  widthM: "Szerokosc",
-  lengthM: "Dlugosc",
-  wallHeightM: "Wysokosc",
+  widthM: "Szerokość",
+  lengthM: "Długość",
+  wallHeightM: "Wysokość",
 };
 
 const tabs = [
-  { id: "body", label: "Bryla", icon: Ruler },
+  { id: "body", label: "Bryła", icon: Ruler },
   { id: "roof", label: "Dach", icon: ArrowUpRight },
-  { id: "cladding", label: "Plyty", icon: Layers3 },
-  { id: "flashings", label: "Obrobki", icon: SlidersHorizontal },
+  { id: "cladding", label: "Płyty", icon: Layers3 },
+  { id: "flashings", label: "Obróbki", icon: SlidersHorizontal },
   { id: "openings", label: "Otwory", icon: DoorOpen },
   { id: "lighting", label: "Oświetlenie", icon: Lightbulb },
   { id: "structure", label: "Konstrukcja", icon: Frame },
@@ -91,6 +96,7 @@ const tabs = [
 
 export function ControlPanel() {
   const [claddingDraft, setCladdingDraft] = useState(null);
+  const access = useConfiguratorAccess();
   const config = useConfiguratorStore((state) => state.config);
   const activeTab = useConfiguratorStore((state) => state.ui.activeTab);
   const setActiveTab = useConfiguratorStore((state) => state.setActiveTab);
@@ -109,21 +115,39 @@ export function ControlPanel() {
   const removeOpening = useConfiguratorStore((state) => state.removeOpening);
   const limits = PRESETS[config.preset].dimensionLimits;
   const roofPitch = roofPitchBounds(config.roof.type);
+  const visibleTabs = tabs.filter((tab) => {
+    if (tab.id === "lighting") return access.capabilities.lighting;
+    if (tab.id === "structure") return access.capabilities.structureView;
+    return true;
+  });
 
   return (
     <aside className="control-panel">
       <div className="panel-top">
         <div className="panel-title-row">
-          <div>
-            <p className="eyebrow">Profesjonalny konfigurator</p>
-            <h1>Garaze warstwowe</h1>
+          <div className="configurator-brand">
+            <span className="configurator-brand-mark">
+              {access.company.branding.logoUrl ? (
+                <img src={access.company.branding.logoUrl} alt="" />
+              ) : (
+                access.company.branding.name.slice(0, 1).toUpperCase()
+              )}
+            </span>
+            <div>
+              <p className="eyebrow">{access.company.branding.name}</p>
+              <h1>Konfigurator garażu</h1>
+            </div>
           </div>
-          <div className="panel-status-dot" aria-hidden="true" />
+          <div className="panel-online-state">
+            <span className="panel-status-dot" aria-hidden="true" />
+            <span>Online</span>
+          </div>
         </div>
+        <p className="panel-intro">Dopasuj obiekt krok po kroku. Podgląd 3D aktualizuje się automatycznie.</p>
       </div>
 
       <nav className="config-tabs" aria-label="Kategorie konfiguracji">
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button key={tab.id} className={cn("config-tab", activeTab === tab.id && "active")} onClick={() => setActiveTab(tab.id)} type="button">
@@ -153,9 +177,11 @@ export function ControlPanel() {
                 ))}
               </div>
             </PanelSection>
-            <PanelSection title="Wypust frontowy" icon={PanelTop}>
-              <FrontProjectionPanel config={config} updateFrontProjection={updateFrontProjection} />
-            </PanelSection>
+            {access.capabilities.frontProjection && (
+              <PanelSection title="Wypust frontowy" icon={PanelTop}>
+                <FrontProjectionPanel config={config} updateFrontProjection={updateFrontProjection} />
+              </PanelSection>
+            )}
           </>
         )}
 
@@ -515,6 +541,7 @@ function ToggleRow({ label, description, checked, onChange, disabled = false }) 
 }
 
 function OpeningsPanel({ config, updateOpening, addOpening, duplicateOpening, removeOpening }) {
+  const storeApi = useConfiguratorStoreApi();
   const [selectedId, setSelectedId] = useState(config.openings[0]?.id || null);
   const selected = config.openings.find((opening) => opening.id === selectedId) || config.openings[0];
   const selectedIndex = selected ? config.openings.findIndex((opening) => opening.id === selected.id) : -1;
@@ -522,7 +549,7 @@ function OpeningsPanel({ config, updateOpening, addOpening, duplicateOpening, re
   const addAndSelect = (kind) => {
     addOpening(kind);
     queueMicrotask(() => {
-      const openings = useConfiguratorStore.getState().config.openings;
+      const openings = storeApi.getState().config.openings;
       setSelectedId(openings.at(-1)?.id || null);
     });
   };
@@ -530,7 +557,7 @@ function OpeningsPanel({ config, updateOpening, addOpening, duplicateOpening, re
   const duplicateAndSelect = (id) => {
     duplicateOpening(id);
     queueMicrotask(() => {
-      const openings = useConfiguratorStore.getState().config.openings;
+      const openings = storeApi.getState().config.openings;
       setSelectedId(openings.at(-1)?.id || null);
     });
   };
@@ -811,11 +838,16 @@ function WindowFlow({ opening, updateOpening }) {
 function GateFlow({ opening, updateOpening }) {
   const [activeStep, setActiveStep] = useState(0);
   const [colorModalOpen, setColorModalOpen] = useState(false);
+  const access = useConfiguratorAccess();
   const manufacturer = getGateManufacturer(opening);
   const type = getGateType(opening);
   const model = getGateModel(opening);
   const color = getGateColor(opening);
   const availableColors = getGateAvailableColors(opening);
+  const visibleGateManufacturers = filterAllowedRecord(
+    GATE_MANUFACTURERS,
+    access.settings.allowedGateManufacturerIds,
+  );
 
   const compatibleColor = (nextModel, structure, preferredColor) => {
     const allowedKeys = nextModel.structureColors?.[structure] || Object.keys(nextModel.colors);
@@ -857,7 +889,7 @@ function GateFlow({ opening, updateOpening }) {
     {
       id: "manufacturer",
       label: "Producent",
-      options: Object.entries(GATE_MANUFACTURERS).map(([key, item]) => ({
+      options: Object.entries(visibleGateManufacturers).map(([key, item]) => ({
         key,
         label: item.label,
         meta: "Producent bram",
@@ -947,7 +979,7 @@ function GateFlow({ opening, updateOpening }) {
         </div>
         <ColorModal
           title="Kolor bramy"
-          colors={availableColors}
+          colors={filterAllowedColors(availableColors, access.settings.allowedWallColorIds)}
           selected={opening.color}
           open={colorModalOpen}
           onClose={() => setColorModalOpen(false)}
@@ -988,14 +1020,14 @@ function GateFlow({ opening, updateOpening }) {
           </button>
         </div>
       </div>
-      <div className="flashing-toggle-list">
+      {access.capabilities.gateAnimations && <div className="flashing-toggle-list">
         <ToggleRow
           label="Otwórz bramę"
           description="Podgląd animacji otwierania w scenie 3D"
           checked={!!opening.open}
           onChange={(open) => updateOpening(opening.id, { open })}
         />
-      </div>
+      </div>}
     </div>
   );
 }
@@ -1003,9 +1035,14 @@ function GateFlow({ opening, updateOpening }) {
 function RoofCladdingFlow({ cladding, updateCladding }) {
   const [activeStep, setActiveStep] = useState(0);
   const [colorModalOpen, setColorModalOpen] = useState(false);
+  const access = useConfiguratorAccess();
   const manufacturer = getRoofCladdingManufacturer(cladding);
   const model = getRoofCladdingModel(cladding);
   const color = getRoofCladdingColor(cladding);
+  const visibleRoofManufacturers = filterAllowedRecord(
+    ROOF_CLADDING_CATALOG,
+    access.settings.allowedPanelManufacturerIds,
+  );
 
   const updateRoofDraft = (patch) => {
     const next = { ...cladding, ...patch };
@@ -1027,7 +1064,7 @@ function RoofCladdingFlow({ cladding, updateCladding }) {
     {
       id: "roofManufacturer",
       label: "Producent dachu",
-      options: Object.entries(ROOF_CLADDING_CATALOG).map(([key, item]) => ({
+      options: Object.entries(visibleRoofManufacturers).map(([key, item]) => ({
         key,
         label: item.label,
         meta: "Dostawca plyty dachowej",
@@ -1087,7 +1124,7 @@ function RoofCladdingFlow({ cladding, updateCladding }) {
         </div>
         <ColorModal
           title="Kolor plyty dachowej"
-          colors={model.colors}
+          colors={filterAllowedColors(model.colors, access.settings.allowedRoofColorIds)}
           selected={cladding.roofColor}
           open={colorModalOpen}
           onClose={() => setColorModalOpen(false)}
@@ -1125,12 +1162,17 @@ function RoofCladdingFlow({ cladding, updateCladding }) {
 function CladdingFlow({ selection, appliedSelection, onChange, onColorChange, onApply }) {
   const [activeStep, setActiveStep] = useState(0);
   const [colorModalOpen, setColorModalOpen] = useState(false);
+  const access = useConfiguratorAccess();
   const manufacturer = getCladdingManufacturer(selection);
   const type = getCladdingType(selection);
   const model = getCladdingModel(selection);
   const color = getCladdingColor(selection);
   const panelLengthM = getWallPanelLengthM(selection);
   const changed = JSON.stringify(selectionForCompare(selection)) !== JSON.stringify(selectionForCompare(appliedSelection));
+  const visiblePanelManufacturers = filterAllowedRecord(
+    CLADDING_CATALOG,
+    access.settings.allowedPanelManufacturerIds,
+  );
 
   const updateDraft = (patch) => {
     const next = { ...selection, ...patch };
@@ -1158,7 +1200,7 @@ function CladdingFlow({ selection, appliedSelection, onChange, onColorChange, on
       id: "manufacturer",
       label: "Producent",
       value: manufacturer.label,
-      options: Object.entries(CLADDING_CATALOG).map(([key, item]) => ({
+      options: Object.entries(visiblePanelManufacturers).map(([key, item]) => ({
         key,
         label: item.label,
         meta: "Dostawca systemu plyt",
@@ -1231,7 +1273,7 @@ function CladdingFlow({ selection, appliedSelection, onChange, onColorChange, on
         </div>
         <ColorModal
           title="Kolor plyty sciennej"
-          colors={model.colors}
+          colors={filterAllowedColors(model.colors, access.settings.allowedWallColorIds)}
           selected={selection.color}
           open={colorModalOpen}
           onClose={() => setColorModalOpen(false)}

@@ -1,4 +1,7 @@
-import { create } from "zustand";
+import { createContext, createElement, useContext, useRef } from "react";
+import { useStore } from "zustand";
+import { createStore } from "zustand/vanilla";
+import { isQualityPreference, writeQualityPreference } from "@/lib/viewerPreferences";
 import {
   DEFAULT_DOOR_SELECTION,
   DEFAULT_GATE_SELECTION,
@@ -37,7 +40,7 @@ const defaultOrder = {
 };
 
 const defaultConfig = {
-  schemaVersion: 11,
+  schemaVersion: 12,
   preset: "single_garage",
   dimensions: { ...PRESETS.single_garage.dimensions },
   viewMode: "full",
@@ -53,6 +56,25 @@ const defaultConfig = {
   order: defaultOrder,
   openings: getPresetOpenings("single_garage"),
 };
+
+export function createInitialConfiguratorConfig(presetId = "single_garage") {
+  const preset = PRESETS[presetId] ? presetId : "single_garage";
+  const defaults = getPresetDefaults(preset);
+  return {
+    ...defaultConfig,
+    preset,
+    dimensions: { ...PRESETS[preset].dimensions },
+    roof: { ...defaults.roof, overhangM: { ...defaults.roof.overhangM } },
+    cladding: { ...defaults.cladding },
+    flashings: { ...defaults.flashings },
+    gutters: { ...defaults.gutters },
+    frontProjection: { ...DEFAULT_FRONT_PROJECTION },
+    lighting: { ...DEFAULT_LIGHTING },
+    structure: { ...DEFAULT_STRUCTURE },
+    order: { ...defaultOrder },
+    openings: getPresetOpenings(preset),
+  };
+}
 
 const OPENING_LIMITS = {
   gate: { width: [1.8, 6], height: [1.8, 4.5], sill: [0, 0] },
@@ -210,11 +232,18 @@ function addOpeningWithPlacement(openings, kind, dimensions) {
   return openings;
 }
 
-export const useConfiguratorStore = create((set) => ({
-  config: defaultConfig,
+export function createConfiguratorStore(initialConfig = createInitialConfiguratorConfig()) {
+  return createStore((set) => ({
+  config: initialConfig,
   ui: {
     activeTab: "body",
     lightingPreviewSuppressed: false,
+    // "auto" | "low" | "balanced" | "high" - świadomy wybór użytkownika.
+    qualityPreference: "auto",
+    // Poziom wyliczony z detekcji sprzętu i PerformanceMonitor - używany tylko w trybie "auto".
+    autoQuality: "high",
+    // Wymuszenie pełnej jakości na czas zrzutów do PDF, niezależnie od ustawień.
+    qualityOverride: null,
   },
   setActiveTab: (activeTab) =>
     set((state) => ({
@@ -223,6 +252,23 @@ export const useConfiguratorStore = create((set) => ({
   setLightingPreviewSuppressed: (lightingPreviewSuppressed) =>
     set((state) => ({
       ui: { ...state.ui, lightingPreviewSuppressed },
+    })),
+  setQualityPreference: (qualityPreference) => {
+    if (!isQualityPreference(qualityPreference)) return;
+    writeQualityPreference(qualityPreference);
+    set((state) => ({
+      ui: { ...state.ui, qualityPreference },
+    }));
+  },
+  // PerformanceMonitor potrafi wołać onDecline wielokrotnie z rzędu - bez tego
+  // strażnika każde wywołanie tworzyłoby nowy obiekt ui i przerenderowywało scenę.
+  setAutoQuality: (autoQuality) =>
+    set((state) => (state.ui.autoQuality === autoQuality
+      ? state
+      : { ui: { ...state.ui, autoQuality } })),
+  setQualityOverride: (qualityOverride) =>
+    set((state) => ({
+      ui: { ...state.ui, qualityOverride },
     })),
   setPreset: (preset) =>
     set((state) => {
@@ -442,4 +488,33 @@ export const useConfiguratorStore = create((set) => ({
         openings: state.config.openings.filter((opening) => opening.id !== id),
       },
     })),
-}));
+  }));
+}
+
+export function selectEffectiveQuality(state) {
+  const { qualityPreference, autoQuality, qualityOverride } = state.ui;
+  if (qualityOverride) return qualityOverride;
+  return qualityPreference === "auto" ? autoQuality : qualityPreference;
+}
+
+const ConfiguratorStoreContext = createContext(null);
+
+export function ConfiguratorStoreProvider({ initialConfig, children }) {
+  const storeRef = useRef(null);
+  if (!storeRef.current) {
+    storeRef.current = createConfiguratorStore(initialConfig);
+  }
+  return createElement(ConfiguratorStoreContext.Provider, { value: storeRef.current }, children);
+}
+
+export function useConfiguratorStore(selector = (state) => state) {
+  const store = useContext(ConfiguratorStoreContext);
+  if (!store) throw new Error("ConfiguratorStoreProvider is missing.");
+  return useStore(store, selector);
+}
+
+export function useConfiguratorStoreApi() {
+  const store = useContext(ConfiguratorStoreContext);
+  if (!store) throw new Error("ConfiguratorStoreProvider is missing.");
+  return store;
+}

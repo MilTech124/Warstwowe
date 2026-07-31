@@ -11,6 +11,7 @@ import {
   WALL_PROFILES,
 } from "@/config/catalog";
 import { getPaintedMetalMaterial, materialProps, materials } from "@/scene/materials";
+import { sceneQualityProfile } from "@/scene/SceneEnvironment";
 import { useConfiguratorStore } from "@/store/configuratorStore";
 import { ConcealedHingeHint, DoorHandle, DoubleGlazing, RectFrame, SurfaceHinge } from "@/scene/openings/Hardware";
 
@@ -342,7 +343,7 @@ export function DoorLeaf({ opening, quality = "high", cladding }) {
   const leafCount = model.leafCount || 1;
   const gap = leafCount === 2 ? 0.022 : 0;
   const leafWidth = opening.widthM / leafCount - gap;
-  const highDetail = quality === "high";
+  const highDetail = sceneQualityProfile(quality).highDetail;
 
   useFrame((_, dt) => {
     progress.current = MathUtils.damp(progress.current, opening.open ? 1 : 0, 7, dt);

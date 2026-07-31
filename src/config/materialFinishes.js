@@ -276,9 +276,11 @@ export const FRAME_FINISH_OPTIONS = Object.freeze(getFinishesForRole("frame"));
 
 export function resolveFinishMaps(finish, quality = "high", role = null) {
   const preset = typeof finish === "string" ? getFinishPreset(finish) : finish;
+  // Poziom "low" korzysta z tego samego zestawu tekstur co "balanced" (folder 1k).
+  const mapKey = quality === "low" ? "balanced" : quality;
   const roleMaps = role ? preset?.roleMaps?.[role] : null;
   if (roleMaps) {
-    return roleMaps[quality] || roleMaps.high || roleMaps.balanced || {};
+    return roleMaps[mapKey] || roleMaps.high || roleMaps.balanced || {};
   }
-  return preset?.maps?.[quality] || preset?.maps?.high || preset?.maps?.balanced || {};
+  return preset?.maps?.[mapKey] || preset?.maps?.high || preset?.maps?.balanced || {};
 }

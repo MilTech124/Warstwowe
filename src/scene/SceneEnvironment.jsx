@@ -6,33 +6,71 @@ import {
   Color,
   EquirectangularReflectionMapping,
   Object3D,
+  PCFShadowMap,
   PCFSoftShadowMap,
   SRGBColorSpace,
 } from "three";
 import { setSceneTextureAnisotropy } from "@/scene/materials";
 
 export const SCENE_QUALITY = Object.freeze({
+  low: {
+    dpr: [1, 1],
+    shadowMapSize: 512,
+    softShadows: false,
+    contactShadows: false,
+    contactShadowResolution: 256,
+    contactShadowBlur: 4,
+    contactShadowOpacity: 0.16,
+    contactShadowFrames: 1,
+    environmentIntensity: 0.72,
+    backgroundBlurriness: 0.09,
+    anisotropy: 1,
+    highDetail: false,
+    lightSourceCap: 2,
+    textureQuality: "balanced",
+    animateMood: false,
+  },
   balanced: {
     dpr: [1, 1.35],
     shadowMapSize: 1024,
+    softShadows: true,
+    contactShadows: true,
     contactShadowResolution: 512,
     contactShadowBlur: 3.4,
     contactShadowOpacity: 0.2,
+    contactShadowFrames: 2,
     environmentIntensity: 0.72,
     backgroundBlurriness: 0.055,
     anisotropy: 4,
+    highDetail: false,
+    lightSourceCap: 2,
+    textureQuality: "balanced",
+    animateMood: true,
   },
   high: {
     dpr: [1, 1.85],
     shadowMapSize: 2048,
+    softShadows: true,
+    contactShadows: true,
     contactShadowResolution: 1024,
     contactShadowBlur: 3,
     contactShadowOpacity: 0.23,
+    contactShadowFrames: 6,
     environmentIntensity: 0.82,
     backgroundBlurriness: 0.035,
     anisotropy: 8,
+    highDetail: true,
+    lightSourceCap: 4,
+    textureQuality: "high",
+    animateMood: true,
   },
 });
+
+export const QUALITY_LEVELS = Object.freeze(["low", "balanced", "high"]);
+
+export function sceneQualityProfile(quality) {
+  return SCENE_QUALITY[quality] || SCENE_QUALITY.high;
+}
 
 export function detectSceneQuality() {
   if (typeof window === "undefined") return "high";
@@ -41,12 +79,13 @@ export function detectSceneQuality() {
   const cores = navigator.hardwareConcurrency || 8;
   const compactViewport = window.matchMedia("(max-width: 980px)").matches;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (memory <= 2 || cores <= 2) return "low";
   return compactViewport || reducedMotion || memory <= 4 || cores <= 4 ? "balanced" : "high";
 }
 
 export function SceneEnvironment({ dimensions, cameraMode, quality = "high", nightPreview = false }) {
   const { gl, scene } = useThree();
-  const profile = SCENE_QUALITY[quality] || SCENE_QUALITY.high;
+  const profile = sceneQualityProfile(quality);
   const environmentTexture = useTexture("/environment/industrial-yard-day.png");
   const hemisphereRef = useRef(null);
   const sunRef = useRef(null);
@@ -82,11 +121,12 @@ export function SceneEnvironment({ dimensions, cameraMode, quality = "high", nig
     gl.outputColorSpace = SRGBColorSpace;
     gl.toneMapping = ACESFilmicToneMapping;
     gl.shadowMap.enabled = true;
-    gl.shadowMap.type = PCFSoftShadowMap;
+    gl.shadowMap.type = profile.softShadows ? PCFSoftShadowMap : PCFShadowMap;
+    gl.shadowMap.needsUpdate = true;
     setSceneTextureAnisotropy(
       Math.min(profile.anisotropy, gl.capabilities.getMaxAnisotropy()),
     );
-  }, [gl, profile.anisotropy]);
+  }, [gl, profile.anisotropy, profile.softShadows]);
 
   useEffect(() => {
     sunTarget.position.set(0, wallHeightM * 0.38, 0);
@@ -95,7 +135,7 @@ export function SceneEnvironment({ dimensions, cameraMode, quality = "high", nig
 
   useFrame((_, delta) => {
     const target = nightPreview ? 1 : 0;
-    const alpha = reducedMotion ? 1 : 1 - Math.exp(-12 * delta);
+    const alpha = reducedMotion || !profile.animateMood ? 1 : 1 - Math.exp(-12 * delta);
     moodRef.current += (target - moodRef.current) * alpha;
     const mood = moodRef.current;
     const dayExposure = cameraMode === "interior" ? 1.12 : 0.96;

@@ -16,6 +16,7 @@ import {
   materials,
 } from "@/scene/materials";
 import { useConfiguratorStore } from "@/store/configuratorStore";
+import { useConfiguratorAccess } from "@/configurator/ConfiguratorContext";
 import {
   GATE_FLASHING_SHEET_M,
   getGateMountMetrics,
@@ -31,8 +32,10 @@ import {
 
 function useGateToggle(opening) {
   const updateOpening = useConfiguratorStore((state) => state.updateOpening);
+  const access = useConfiguratorAccess();
   return (event) => {
     event.stopPropagation();
+    if (!access.capabilities.gateAnimations) return;
     updateOpening(opening.id, { open: !opening.open });
   };
 }

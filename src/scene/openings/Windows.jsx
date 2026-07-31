@@ -8,6 +8,7 @@ import {
   getWindowModel,
 } from "@/config/catalog";
 import { getGlassMaterial, getPaintedMetalMaterial, materials } from "@/scene/materials";
+import { sceneQualityProfile } from "@/scene/SceneEnvironment";
 import { useConfiguratorStore } from "@/store/configuratorStore";
 import { DoubleGlazing, RectFrame, WindowHandle } from "@/scene/openings/Hardware";
 
@@ -199,7 +200,7 @@ export function WindowLeaf({ opening, quality = "high" }) {
   const operable = model.operation !== "fixed";
   const requestedMode = opening.openMode || (opening.open ? "turn" : "closed");
   const openMode = model.openModes.includes(requestedMode) ? requestedMode : "closed";
-  const highDetail = quality === "high";
+  const highDetail = sceneQualityProfile(quality).highDetail;
   const roofPlacement = opening.kind === "roofWindow";
 
   useFrame((_, dt) => {

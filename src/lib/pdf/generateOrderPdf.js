@@ -12,7 +12,7 @@ import { loadPdfMake } from "@/lib/pdf/loadPdfMake";
  * @param {(viewMode: string) => void} options.setViewModeOnly
  * @param {(value: boolean) => void} options.setShowDimensions
  * @param {(status: { phase: string, label: string }) => void} [options.onProgress]
- * @returns {Promise<{ fileName: string }>}
+ * @returns {Promise<{ fileName: string, blob: Blob }>}
  */
 export async function generateOrderPdf({
   getConfig,
@@ -20,6 +20,7 @@ export async function generateOrderPdf({
   setShowDimensions,
   getLightingPreviewSuppressed,
   setLightingPreviewSuppressed,
+  setQualityOverride,
   onProgress,
 }) {
   const report = (phase, label) => onProgress?.({ phase, label });
@@ -39,6 +40,7 @@ export async function generateOrderPdf({
     setShowDimensions,
     getLightingPreviewSuppressed,
     setLightingPreviewSuppressed,
+    setQualityOverride,
     onProgress: ({ index, total, label }) => report("capture", `Zrzut ${index}/${total}: ${label}`),
   });
 
@@ -54,8 +56,10 @@ export async function generateOrderPdf({
   const fileName = `Zamowienie-${orderNo}.pdf`;
 
   // 0.3.x: całe API jest obietnicowe.
-  await pdfMake.createPdf(document, TABLE_LAYOUTS).download(fileName);
+  const pdf = pdfMake.createPdf(document, TABLE_LAYOUTS);
+  const blob = await pdf.getBlob();
+  await pdf.download(fileName);
 
   report("done", "Gotowe");
-  return { fileName };
+  return { fileName, blob };
 }

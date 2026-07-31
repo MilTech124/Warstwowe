@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Matrix4, Object3D, Quaternion, Vector3 } from "three";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
 import { materials } from "@/scene/materials";
+import { sceneQualityProfile } from "@/scene/SceneEnvironment";
 import {
   exteriorSconcePlacements,
   frontProjectionLedSegments,
@@ -297,7 +298,7 @@ export function LightingSystem({ config, quality = "high", nightPreview = false 
     [config, lighting.exteriorSconces],
   );
   const gateLightIds = useMemo(
-    () => new Set(selectEvenly(gateLamps, quality === "high" ? 4 : 2).map(({ id }) => id)),
+    () => new Set(selectEvenly(gateLamps, sceneQualityProfile(quality).lightSourceCap).map(({ id }) => id)),
     [gateLamps, quality],
   );
 

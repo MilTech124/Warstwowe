@@ -2,9 +2,13 @@ node_modules/
 .next/
 dist/
 .vite/
+.env
+.env.local
+.env.*.local
 
 *.log
 *.tmp
+*.tsbuildinfo
 
 *-check.png
 *-corrected.png

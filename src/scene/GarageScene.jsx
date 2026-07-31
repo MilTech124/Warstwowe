@@ -4,7 +4,8 @@ import { ContactShadows, Html, OrbitControls, PerformanceMonitor, PerspectiveCam
 import { Box, Building2, Home, Warehouse } from "lucide-react";
 import { Vector3 } from "three";
 import { PRESETS } from "@/config/catalog";
-import { useConfiguratorStore } from "@/store/configuratorStore";
+import { selectEffectiveQuality, useConfiguratorStore } from "@/store/configuratorStore";
+import { readQualityPreference } from "@/lib/viewerPreferences";
 import { WallPanels } from "@/scene/WallPanels";
 import { RoofSystem } from "@/scene/RoofSystem";
 import { FlashingSystem } from "@/scene/FlashingSystem";
@@ -15,12 +16,16 @@ import { DimensionOverlay } from "@/scene/DimensionOverlay";
 import { FrontProjectionSystem } from "@/scene/FrontProjectionSystem";
 import { LightingSystem } from "@/scene/LightingSystem";
 import { ViewerToolbar } from "@/scene/ViewerToolbar";
+import { ViewerQualityPanel } from "@/scene/ViewerQualityPanel";
 import { SceneCapture } from "@/scene/SceneCapture";
 import { captureBridge } from "@/scene/captureBridge";
+import { fpsBridge } from "@/scene/fpsBridge";
 import { materials } from "@/scene/materials";
-import { detectSceneQuality, SCENE_QUALITY, SceneEnvironment } from "@/scene/SceneEnvironment";
+import { detectSceneQuality, sceneQualityProfile, SceneEnvironment } from "@/scene/SceneEnvironment";
+import { isWebglAvailable } from "@/scene/webglSupport";
 import { frontProjectionDepth } from "@/scene/frontProjectionMath";
 import { roofFootprint } from "@/scene/geometry";
+import { useConfiguratorAccess } from "@/configurator/ConfiguratorContext";
 
 const presetIcons = {
   large_hall: Warehouse,
@@ -223,6 +228,7 @@ function FoundationSlab({ config }) {
 
 function GarageModel({ config, quality, nightPreview }) {
   const showSkin = config.viewMode === "full";
+  const access = useConfiguratorAccess();
 
   return (
     <group name="garage-root">
@@ -232,10 +238,10 @@ function GarageModel({ config, quality, nightPreview }) {
       {showSkin && <WallPanels config={config} quality={quality} />}
       {showSkin && <Openings config={config} quality={quality} />}
       {showSkin && <RoofSystem config={config} quality={quality} />}
-      {showSkin && <FrontProjectionSystem config={config} quality={quality} />}
+      {showSkin && access.capabilities.frontProjection && <FrontProjectionSystem config={config} quality={quality} />}
       {showSkin && <FlashingSystem config={config} quality={quality} />}
       {showSkin && <GutterSystem config={config} quality={quality} />}
-      {showSkin && <LightingSystem config={config} quality={quality} nightPreview={nightPreview} />}
+      {showSkin && access.capabilities.lighting && <LightingSystem config={config} quality={quality} nightPreview={nightPreview} />}
       {config.showDimensions && <DimensionOverlay config={config} />}
     </group>
   );
@@ -246,6 +252,49 @@ function Loader() {
     <Html center>
       <div className="scene-loader">Ladowanie modelu</div>
     </Html>
+  );
+}
+
+const QUALITY_LADDER = ["low", "balanced", "high"];
+
+function degradeQuality(quality) {
+  const index = QUALITY_LADDER.indexOf(quality);
+  return QUALITY_LADDER[Math.max(0, index - 1)] || "balanced";
+}
+
+function FpsProbe() {
+  const frames = useRef(0);
+  const elapsed = useRef(0);
+
+  useFrame((_, delta) => {
+    frames.current += 1;
+    elapsed.current += delta;
+    if (elapsed.current >= 0.5) {
+      fpsBridge.publish(Math.round(frames.current / elapsed.current));
+      frames.current = 0;
+      elapsed.current = 0;
+    }
+  });
+
+  return null;
+}
+
+function SceneUnavailable({ reason, onRetry }) {
+  const lost = reason === "lost";
+  return (
+    <div className="scene-unavailable" role="alert">
+      <h2>Podgląd 3D niedostępny</h2>
+      <p>
+        {lost
+          ? "Przeglądarka przerwała renderowanie sceny 3D. Zwykle pomaga zamknięcie innych kart lub programów obciążających kartę graficzną."
+          : "Ta przeglądarka lub karta graficzna nie obsługuje WebGL. Zaktualizuj przeglądarkę i sterowniki karty graficznej albo włącz akcelerację sprzętową."}
+      </p>
+      {lost && (
+        <button className="viewer-tool active" onClick={onRetry} type="button">
+          Spróbuj ponownie
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -269,10 +318,14 @@ function SceneStatus({ config }) {
 function ViewerPresetOverlay() {
   const config = useConfiguratorStore((state) => state.config);
   const setPreset = useConfiguratorStore((state) => state.setPreset);
+  const access = useConfiguratorAccess();
+  const visiblePresets = Object.entries(PRESETS).filter(
+    ([key]) => !access.settings.allowedPresetIds.length || access.settings.allowedPresetIds.includes(key),
+  );
 
   return (
     <div className="viewer-presets" aria-label="Glowne presety">
-      {Object.entries(PRESETS).map(([key, preset]) => {
+      {visiblePresets.map(([key, preset]) => {
         const Icon = presetIcons[key];
         const selected = config.preset === key;
         return (
@@ -287,12 +340,53 @@ function ViewerPresetOverlay() {
 }
 
 export function GarageScene() {
-  const config = useConfiguratorStore((state) => state.config);
+  const storedConfig = useConfiguratorStore((state) => state.config);
+  const access = useConfiguratorAccess();
+  const config = useMemo(() => ({
+    ...storedConfig,
+    viewMode: access.capabilities.structureView ? storedConfig.viewMode : "full",
+    cameraMode:
+      !access.capabilities.structureView && storedConfig.cameraMode === "structure"
+        ? "orbit"
+        : storedConfig.cameraMode,
+    frontProjection: access.capabilities.frontProjection
+      ? storedConfig.frontProjection
+      : { ...(storedConfig.frontProjection ?? {}), depthM: 0 },
+    lighting: access.capabilities.lighting
+      ? storedConfig.lighting
+      : {
+          interiorLighting: false,
+          roofPerimeterLed: false,
+          gateLamps: false,
+          exteriorSconces: false,
+          frontProjectionLed: false,
+        },
+    openings: access.capabilities.gateAnimations
+      ? storedConfig.openings
+      : storedConfig.openings.map((opening) =>
+          opening.kind === "gate" ? { ...opening, open: false } : opening,
+        ),
+  }), [access.capabilities, storedConfig]);
   const activeTab = useConfiguratorStore((state) => state.ui.activeTab);
   const lightingPreviewSuppressed = useConfiguratorStore((state) => state.ui.lightingPreviewSuppressed);
-  const [quality, setQuality] = useState(detectSceneQuality);
+  const quality = useConfiguratorStore(selectEffectiveQuality);
+  const autoQuality = useConfiguratorStore((state) => state.ui.autoQuality);
+  const setQualityPreference = useConfiguratorStore((state) => state.setQualityPreference);
+  const setAutoQuality = useConfiguratorStore((state) => state.setAutoQuality);
+  const [glState, setGlState] = useState("ok");
+  const [canvasKey, setCanvasKey] = useState(0);
+
+  // Detekcja i odczyt zapisanego wyboru dopiero po montażu - store powstaje też
+  // w SSR, a localStorage/navigator w initializerze dałyby hydration mismatch.
+  useEffect(() => {
+    setAutoQuality(detectSceneQuality());
+    const stored = readQualityPreference();
+    if (stored !== "auto") setQualityPreference(stored);
+    if (!isWebglAvailable()) setGlState("unsupported");
+  }, [setAutoQuality, setQualityPreference]);
+
   const nightPreview = activeTab === "lighting" && !lightingPreviewSuppressed;
-  const qualityProfile = SCENE_QUALITY[quality];
+  const qualityProfile = sceneQualityProfile(quality);
   const contactShadowKey = [
     quality,
     config.preset,
@@ -304,22 +398,50 @@ export function GarageScene() {
   ].join(":");
   const footprint = roofFootprint(config);
 
+  if (glState !== "ok") {
+    return (
+      <div className="scene-shell">
+        <SceneUnavailable
+          reason={glState}
+          onRetry={() => {
+            setGlState("ok");
+            setCanvasKey((value) => value + 1);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="scene-shell">
       <Canvas
-        shadows="soft"
+        key={canvasKey}
+        shadows={qualityProfile.softShadows ? "soft" : "percentage"}
         dpr={qualityProfile.dpr}
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
         onCreated={(state) => {
           state.gl.localClippingEnabled = true;
+          const canvas = state.gl.domElement;
+          canvas.addEventListener("webglcontextlost", (event) => {
+            // Bez preventDefault przeglądarka nie przywróci kontekstu.
+            event.preventDefault();
+            setGlState("lost");
+          });
+          canvas.addEventListener("webglcontextrestored", () => {
+            // Renderer trzyma zasoby wiszące na martwym kontekście - scenę
+            // odtwarzamy od zera przez remount Canvasa.
+            setGlState("ok");
+            setCanvasKey((value) => value + 1);
+          });
         }}
       >
         <PerspectiveCamera makeDefault fov={38} near={0.08} far={320} position={[7, 5, 8]} />
         <PerformanceMonitor
           flipflops={2}
-          onDecline={() => setQuality("balanced")}
-          onFallback={() => setQuality("balanced")}
+          onDecline={() => setAutoQuality(degradeQuality(autoQuality))}
+          onFallback={() => setAutoQuality(degradeQuality(autoQuality))}
         />
+        <FpsProbe />
         <Suspense fallback={<Loader />}>
           <SceneEnvironment
             dimensions={config.dimensions}
@@ -330,19 +452,22 @@ export function GarageScene() {
           <GarageModel config={config} quality={quality} nightPreview={nightPreview} />
           <SceneCapture />
         </Suspense>
-        <ContactShadows
-          key={contactShadowKey}
-          position={[0, 0.018, 0]}
-          opacity={qualityProfile.contactShadowOpacity}
-          blur={qualityProfile.contactShadowBlur}
-          scale={Math.max(footprint.roofWidth, footprint.roofLength) * 1.55}
-          far={Math.max(8, config.dimensions.wallHeightM * 2.6)}
-          resolution={qualityProfile.contactShadowResolution}
-          frames={quality === "high" ? 6 : 2}
-        />
+        {qualityProfile.contactShadows && (
+          <ContactShadows
+            key={contactShadowKey}
+            position={[0, 0.018, 0]}
+            opacity={qualityProfile.contactShadowOpacity}
+            blur={qualityProfile.contactShadowBlur}
+            scale={Math.max(footprint.roofWidth, footprint.roofLength) * 1.55}
+            far={Math.max(8, config.dimensions.wallHeightM * 2.6)}
+            resolution={qualityProfile.contactShadowResolution}
+            frames={qualityProfile.contactShadowFrames}
+          />
+        )}
         <CameraRig config={config} />
       </Canvas>
       <ViewerPresetOverlay />
+      <ViewerQualityPanel />
       <ViewerToolbar />
       <SceneStatus config={config} />
     </div>

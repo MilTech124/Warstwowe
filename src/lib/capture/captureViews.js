@@ -88,6 +88,7 @@ export async function captureViews({
   setShowDimensions,
   getLightingPreviewSuppressed,
   setLightingPreviewSuppressed,
+  setQualityOverride,
   onProgress,
 }) {
   if (!captureBridge.ready()) {
@@ -129,6 +130,10 @@ export async function captureViews({
 
   try {
     setLightingPreviewSuppressed?.(true);
+    // Oferta zawsze w pełnej jakości — niezależnie od tego, jaki poziom wybrał
+    // użytkownik dla podglądu na swoim sprzęcie. waitForScene poniżej odczeka
+    // na doczytanie tekstur 2k.
+    setQualityOverride?.("high");
     // Miarki to etykiety DOM (<Html>), które nie trafiają do bufora WebGL —
     // zostałyby same kreski bez opisów. Wymiary idą na rysunki wektorowe.
     if (originalShowDimensions) setShowDimensions(false);
@@ -174,5 +179,6 @@ export async function captureViews({
     setViewModeOnly(originalViewMode);
     setShowDimensions(originalShowDimensions);
     setLightingPreviewSuppressed?.(originalLightingPreviewSuppressed);
+    setQualityOverride?.(null);
   }
 }
