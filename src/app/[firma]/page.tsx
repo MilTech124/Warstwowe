@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import App from "@/App";
 import { InactiveConfigurator } from "@/components/saas/InactiveConfigurator";
-import { getConfiguratorBootstrap } from "@/server/services/companyService";
+import { getCompanySettingsEditorBootstrap, getConfiguratorBootstrap } from "@/server/services/companyService";
+import { assertCompanyDashboardRole } from "@/server/services/dashboardService";
 import { RESERVED_COMPANY_SLUGS } from "@/domain/company";
 
 export const dynamic = "force-dynamic";
@@ -22,13 +23,24 @@ export async function generateMetadata({ params }: { params: Promise<{ firma: st
 
 export default async function CompanyConfiguratorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ firma: string }>;
+  searchParams: Promise<{ preview?: string }>;
 }) {
   const { firma } = await params;
+  const { preview } = await searchParams;
   if (isReservedApplicationPath(firma)) notFound();
-  const bootstrap = await getConfiguratorBootstrap(firma);
+  if (preview === "settings") await assertCompanyDashboardRole(firma, ["OWNER", "ADMIN"]);
+  const bootstrap = preview === "settings"
+    ? await getCompanySettingsEditorBootstrap(firma)
+    : await getConfiguratorBootstrap(firma);
   if (!bootstrap) notFound();
   if (!bootstrap.accessActive) return <InactiveConfigurator bootstrap={bootstrap} />;
-  return <App bootstrap={bootstrap} />;
+  return (
+    <>
+      {preview === "settings" && <div className="settings-preview-banner">Podgląd prywatnego szkicu — klienci nadal widzą ostatnią opublikowaną wersję.</div>}
+      <App bootstrap={bootstrap} />
+    </>
+  );
 }

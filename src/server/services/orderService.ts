@@ -5,6 +5,8 @@ import { connectMongo } from "@/server/db/connection";
 import { Company, Counter, Order, OrderEvent } from "@/server/db/models";
 import { isSmtpConfigured, sendTransactionalEmail } from "@/server/email/smtp";
 import { getConfiguratorBootstrap } from "@/server/services/companyService";
+import { getPublishedPriceList } from "@/server/services/priceListService";
+import { quoteFromConfiguration } from "@/domain/pricing/quote";
 import type { ConfiguratorBootstrap, OrderCreateInput } from "@/types/saas";
 
 export const orderCreateSchema = z.object({
@@ -28,6 +30,8 @@ export function sanitizeConfiguration(
 ) {
   const configuration = structuredClone(input);
   delete configuration.order;
+  // Cena liczona jest wyłącznie serwerowo; cokolwiek klient przysłał, odpada.
+  delete configuration.quote;
   configuration.schemaVersion = 12;
 
   if (
@@ -35,6 +39,13 @@ export function sanitizeConfiguration(
     && !bootstrap.settings.allowedPresetIds.includes(configuration.preset)
   ) {
     throw new Error("Wybrany preset nie jest już dostępny w tej firmie.");
+  }
+
+  if (
+    bootstrap.settings.allowedRoofTypeIds.length
+    && !bootstrap.settings.allowedRoofTypeIds.includes(configuration.roof?.type)
+  ) {
+    throw new Error("Wybrany typ dachu nie jest już dostępny.");
   }
 
   if (!bootstrap.capabilities.frontProjection) {
@@ -59,7 +70,26 @@ export function sanitizeConfiguration(
     );
   }
 
+  if (!bootstrap.capabilities.flashings) {
+    configuration.flashings = { ...(configuration.flashings || {}), enabled: false };
+  }
+  if (!bootstrap.capabilities.gutters) {
+    configuration.gutters = { ...(configuration.gutters || {}), enabled: false };
+  }
+
   const cladding = configuration.cladding || {};
+  if (
+    bootstrap.settings.allowedWallPanelModelIds.length
+    && !bootstrap.settings.allowedWallPanelModelIds.includes(cladding.model)
+  ) {
+    throw new Error("Wybrany model płyty ściennej nie jest już dostępny.");
+  }
+  if (
+    bootstrap.settings.allowedRoofPanelModelIds.length
+    && !bootstrap.settings.allowedRoofPanelModelIds.includes(cladding.roofModel)
+  ) {
+    throw new Error("Wybrany model płyty dachowej nie jest już dostępny.");
+  }
   if (
     bootstrap.settings.allowedPanelManufacturerIds.length
     && !bootstrap.settings.allowedPanelManufacturerIds.includes(cladding.manufacturer)
@@ -79,6 +109,26 @@ export function sanitizeConfiguration(
     throw new Error("Wybrany kolor dachu nie jest już dostępny.");
   }
   for (const opening of configuration.openings || []) {
+    if (
+      bootstrap.settings.allowedOpeningKinds.length
+      && !bootstrap.settings.allowedOpeningKinds.includes(opening.kind)
+    ) {
+      throw new Error("Wybrany rodzaj otworu nie jest już dostępny.");
+    }
+    if (opening.kind === "gate") {
+      if (bootstrap.settings.allowedGateTypeIds.length && !bootstrap.settings.allowedGateTypeIds.includes(opening.gateType)) {
+        throw new Error("Wybrany typ bramy nie jest już dostępny.");
+      }
+      if (bootstrap.settings.allowedGateModelIds.length && !bootstrap.settings.allowedGateModelIds.includes(opening.model)) {
+        throw new Error("Wybrany model bramy nie jest już dostępny.");
+      }
+    }
+    if (opening.kind === "door" && bootstrap.settings.allowedDoorModelIds.length && !bootstrap.settings.allowedDoorModelIds.includes(opening.model)) {
+      throw new Error("Wybrany model drzwi nie jest już dostępny.");
+    }
+    if ((opening.kind === "window" || opening.kind === "roofWindow") && bootstrap.settings.allowedWindowModelIds.length && !bootstrap.settings.allowedWindowModelIds.includes(opening.model)) {
+      throw new Error("Wybrany model okna nie jest już dostępny.");
+    }
     if (
       opening.kind === "gate"
       && bootstrap.settings.allowedGateManufacturerIds.length
@@ -156,6 +206,27 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
 
   const company = await Company.findById(bootstrap.company.id);
   if (!company) throw new Error("Firma nie istnieje.");
+
+  // Wycena zawsze po stronie serwera, z oczyszczonej konfiguracji i
+  // opublikowanego cennika — cena nigdy nie pochodzi od klienta.
+  // Błąd wyceny nie może zablokować zapisania zamówienia.
+  let quote: unknown = null;
+  let priceListVersion: number | null = null;
+  if (bootstrap.capabilities.pricing) {
+    try {
+      const priceList = await getPublishedPriceList(company._id);
+      if (priceList) {
+        priceListVersion = priceList.version;
+        quote = quoteFromConfiguration(configurationSnapshot, priceList.rates, {
+          currency: priceList.currency,
+          priceListVersion: priceList.version,
+        });
+      }
+    } catch (error) {
+      console.error("[orderService] wycena nie powiodła się", error);
+    }
+  }
+
   const number = await nextOrderNumber(company);
   const order = await Order.create({
     companyId: company._id,
@@ -167,6 +238,8 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
     notes: input.notes,
     settingsVersion: input.settingsVersion,
     catalogVersion: bootstrap.catalog.version,
+    priceListVersion,
+    quote,
     configurationSnapshot,
     submittedAt: new Date(),
   });
@@ -181,6 +254,9 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
   return {
     order: { id: String(order._id), number: order.number, status: order.status },
     receiptToken,
+    // Wraca do przeglądarki, bo PDF jest generowany po stronie klienta i musi
+    // pokazać autorytatywną cenę, a nie policzoną lokalnie.
+    quote,
   };
 }
 

@@ -1,3 +1,4 @@
+import { applyDunningFailure } from "@/domain/dunning";
 import { addBillingPeriod } from "@/domain/plans";
 import { writeAudit } from "@/server/audit";
 import { connectMongo } from "@/server/db/connection";
@@ -17,7 +18,9 @@ import type { PackageCode } from "@/types/saas";
 import { getPlanDefinition } from "@/server/services/planService";
 
 export async function processDueSubscriptions(now = new Date()) {
-  if (!(await connectMongo())) return { checked: 0, charged: 0, failed: 0, skipped: 0 };
+  if (!(await connectMongo())) {
+    return { checked: 0, ordersCreated: 0, failed: 0, skipped: 0, exhausted: 0, ended: 0 };
+  }
   const ended = await Subscription.find({
     status: { $in: ["ACTIVE", "TRIALING"] },
     $or: [
@@ -43,15 +46,27 @@ export async function processDueSubscriptions(now = new Date()) {
     $or: [
       { status: "TRIALING", trialEndsAt: { $lte: now } },
       { status: "ACTIVE", currentPeriodEnd: { $lte: now } },
+      // Dunning retries scheduled by an earlier failure.
+      { status: "PAST_DUE", nextRetryAt: { $lte: now } },
     ],
   }).limit(200);
 
-  const result = { checked: due.length, charged: 0, failed: 0, skipped: 0, ended: ended.length };
+  const result = {
+    checked: due.length,
+    ordersCreated: 0,
+    failed: 0,
+    skipped: 0,
+    exhausted: 0,
+    ended: ended.length,
+  };
   for (const subscription of due) {
     const dueAt = subscription.status === "TRIALING"
       ? subscription.trialEndsAt
       : subscription.currentPeriodEnd;
-    const attemptKey = `${subscription._id}:${new Date(dueAt).toISOString()}`;
+    // The attempt number keeps the key unique per retry. Without it a single
+    // failure permanently blocked the subscription at this due date.
+    const attemptNumber = Math.max(0, Number(subscription.dunningAttempt) || 0);
+    const attemptKey = `${subscription._id}:${new Date(dueAt).toISOString()}:${attemptNumber}`;
     let attempt: any;
     try {
       attempt = await BillingAttempt.create({
@@ -83,7 +98,10 @@ export async function processDueSubscriptions(now = new Date()) {
       const chargePrice = resolvePayUChargePrice(packageCode, amountGross);
       const periodStart = new Date(dueAt);
       const periodEnd = addBillingPeriod(periodStart, "RECURRING_MONTHLY");
-      const extOrderId = `REN-${subscription._id}-${periodStart.getTime()}`;
+      // Payment.extOrderId is unique, so a retry needs its own id.
+      const extOrderId = attemptNumber === 0
+        ? `REN-${subscription._id}-${periodStart.getTime()}`
+        : `REN-${subscription._id}-${periodStart.getTime()}-R${attemptNumber}`;
       const payment: any = await Payment.create({
         companyId: company._id,
         subscriptionId: subscription._id,
@@ -117,9 +135,15 @@ export async function processDueSubscriptions(now = new Date()) {
       await payment.save();
       attempt.status = "ORDER_CREATED";
       await attempt.save();
-      result.charged += 1;
+      // The charge is only settled once PayU notifies us; this counts the
+      // orders we opened, not money collected.
+      result.ordersCreated += 1;
     } catch (error) {
-      subscription.status = "PAYMENT_FAILED";
+      const patch = applyDunningFailure(subscription, now);
+      subscription.status = patch.status;
+      subscription.dunningAttempt = patch.dunningAttempt;
+      subscription.graceEndsAt = patch.graceEndsAt;
+      subscription.nextRetryAt = patch.nextRetryAt ?? undefined;
       await subscription.save();
       attempt.status = "FAILED";
       attempt.errorMessage = error instanceof Error ? error.message : String(error);
@@ -127,12 +151,19 @@ export async function processDueSubscriptions(now = new Date()) {
       await writeAudit({
         companyId: subscription.companyId,
         actorType: "SYSTEM",
-        action: "subscription.payment_failed",
+        action: patch.exhausted ? "subscription.payment_failed" : "subscription.past_due",
         entityType: "Subscription",
         entityId: String(subscription._id),
-        after: { status: "PAYMENT_FAILED", error: attempt.errorMessage },
+        after: {
+          status: patch.status,
+          dunningAttempt: patch.dunningAttempt,
+          nextRetryAt: patch.nextRetryAt,
+          graceEndsAt: patch.graceEndsAt,
+          error: attempt.errorMessage,
+        },
       });
       result.failed += 1;
+      if (patch.exhausted) result.exhausted += 1;
     }
   }
   return result;

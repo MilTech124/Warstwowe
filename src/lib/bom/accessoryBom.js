@@ -11,7 +11,7 @@ import {
   GUTTER_PACKAGES,
   GUTTER_PROFILES,
 } from "@/config/catalog";
-import { roofFootprint, wallTopHeightAt } from "@/scene/geometry";
+import { roofFootprint, wallTopHeightAt } from "@/scene/wallProfile";
 import { isGableRoof, roofMetrics, slopedRoofLength } from "@/scene/roofMath";
 import { effectiveFrontOverhangM } from "@/scene/frontProjectionMath";
 

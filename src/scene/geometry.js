@@ -9,22 +9,9 @@ export { isGableRoof, roofMetrics, roofPitchBounds, slopedRoofLength };
 // Klasa konstrukcji żyje w structure/classes.js razem z opisami klas.
 export { getStructureClass } from "@/scene/structure/classes";
 
-export function roofFootprint(config) {
-  const { widthM, lengthM } = config.dimensions;
-  const { front, back, left, right } = config.roof.overhangM;
-  const effectiveFront = effectiveFrontOverhangM(config);
-
-  return {
-    centerX: (right - left) / 2,
-    centerZ: (effectiveFront - back) / 2,
-    roofWidth: widthM + left + right,
-    roofLength: lengthM + effectiveFront + back,
-    frontRun: lengthM / 2 + effectiveFront,
-    backRun: lengthM / 2 + back,
-    leftRun: widthM / 2 + left,
-    rightRun: widthM / 2 + right,
-  };
-}
+// Obrys dachu i profil ścian nie potrzebują three — mieszkają w wallProfile.js,
+// żeby zestawienie materiałowe dało się policzyć po stronie serwera.
+export { roofFootprint, wallTopHeightAt } from "@/scene/wallProfile";
 
 // Transformacja otworu dachowego do lokalnego układu połaci dachu.
 // Środek otworu = (0,0,0), X = wzdłuż okna, Y = w górę połaci, Z = normala na zewnątrz.
@@ -83,56 +70,6 @@ export function roofOpeningTransform(opening, config) {
     localPosition: [MathUtils.clamp(safeX - centerX, -slabWidth / 2 + opening.widthM / 2, slabWidth / 2 - opening.widthM / 2), normalOffset, safeZ - footprint.centerZ],
     localRotation: [-Math.PI / 2, 0, 0],
   };
-}
-
-export function wallTopHeightAt(side, offset, config) {
-  const { widthM, lengthM, wallHeightM } = config.dimensions;
-  const { rise } = roofMetrics(config);
-  const type = config.roof.type;
-
-  if (type === "single_back") {
-    if (side === "front") return wallHeightM + rise;
-    if (side === "back") return wallHeightM;
-    if (side === "left" || side === "right") {
-      return wallHeightM + ((offset + lengthM / 2) / lengthM) * rise;
-    }
-  }
-
-  if (type === "single_front") {
-    if (side === "front") return wallHeightM;
-    if (side === "back") return wallHeightM + rise;
-    if (side === "left" || side === "right") {
-      return wallHeightM + (1 - (offset + lengthM / 2) / lengthM) * rise;
-    }
-  }
-
-  if (type === "single_right") {
-    if (side === "right") return wallHeightM;
-    if (side === "left") return wallHeightM + rise;
-    if (side === "front" || side === "back") {
-      return wallHeightM + (1 - (offset + widthM / 2) / widthM) * rise;
-    }
-  }
-
-  if (type === "single_left") {
-    if (side === "left") return wallHeightM;
-    if (side === "right") return wallHeightM + rise;
-    if (side === "front" || side === "back") {
-      return wallHeightM + ((offset + widthM / 2) / widthM) * rise;
-    }
-  }
-
-  if (type === "gable_left_right" && (side === "front" || side === "back")) {
-    const distanceFromRidge = Math.abs(offset) / (widthM / 2);
-    return wallHeightM + rise * (1 - Math.min(1, distanceFromRidge));
-  }
-
-  if (type === "gable_front_back" && (side === "left" || side === "right")) {
-    const distanceFromRidge = Math.abs(offset) / (lengthM / 2);
-    return wallHeightM + rise * (1 - Math.min(1, distanceFromRidge));
-  }
-
-  return wallHeightM;
 }
 
 export function wallOpeningAxisCenter(opening, dimensions) {

@@ -1,6 +1,7 @@
 import { put } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
+import { apiError } from "@/server/apiError";
 
 export const runtime = "nodejs";
 
@@ -30,9 +31,6 @@ export async function POST(
     });
     return NextResponse.json({ url: blob.url });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Nie udało się przesłać pliku." },
-      { status: 400 },
-    );
+    return apiError(error, "Nie udało się przesłać pliku.");
   }
 }

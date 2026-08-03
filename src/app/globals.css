@@ -33,6 +33,25 @@ select {
   overflow: hidden;
 }
 
+.settings-preview-banner {
+  position: fixed;
+  z-index: 1000;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border: 1px solid rgba(180, 125, 20, .32);
+  border-radius: 999px;
+  background: rgba(255, 249, 232, .96);
+  box-shadow: 0 12px 32px rgba(29, 42, 39, .16);
+  color: #765012;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: center;
+  backdrop-filter: blur(12px);
+}
+
 .control-panel {
   height: 100%;
   overflow-y: auto;
@@ -2767,4 +2786,210 @@ select {
   .panel-content {
     padding: 14px;
   }
+}
+
+/* ============================================================================
+   shadcn/ui design tokens — APPENDED ONLY.
+   Nothing above this marker may be modified: the rest of this file is the
+   public configurator UI, and `npx shadcn init` would overwrite all of it.
+   Only ever run `npx shadcn add <component>`, then check `git diff` here.
+
+   Tokens live on :root, NOT on .dashboard-shell — Radix (Dialog, Select,
+   DropdownMenu, Tooltip) and Sonner portal into <body>, outside the shell, and
+   scoping the tokens would render every popover transparent-on-transparent.
+   The names below were verified not to collide with any existing rule.
+
+   `--brand-primary` / `--brand-accent` are overwritten per tenant at runtime
+   from Company.branding (see src/app/[firma]/dashboard/layout.tsx).
+   ========================================================================= */
+:root {
+  --brand-primary: #087f72;
+  --brand-accent: #e9a23b;
+  --brand-primary-foreground: #ffffff;
+
+  --radius: 0.625rem;
+
+  --background: #ffffff;
+  --foreground: #15221f;
+  --card: #ffffff;
+  --card-foreground: #15221f;
+  --popover: #ffffff;
+  --popover-foreground: #15221f;
+  --primary: var(--brand-primary);
+  --primary-foreground: var(--brand-primary-foreground);
+  --secondary: #f1f5f4;
+  --secondary-foreground: #15221f;
+  --muted: #f1f5f4;
+  --muted-foreground: #64736f;
+  --accent: #f1f5f4;
+  --accent-foreground: #15221f;
+  --highlight: var(--brand-accent);
+  --destructive: #c74444;
+  --destructive-foreground: #ffffff;
+  --success: #1f8a5b;
+  --warning: #b8791c;
+  --border: #dfe6e3;
+  --input: #dfe6e3;
+  --ring: var(--brand-primary);
+
+  --surface-muted: #f3f5f4;
+  --sidebar: #101c1a;
+  --sidebar-foreground: #e6efec;
+  --sidebar-muted: #8ba49e;
+  --sidebar-border: #1e3330;
+  --sidebar-accent: #17302c;
+  --sidebar-accent-foreground: #ffffff;
+
+  --chart-1: var(--brand-primary);
+  --chart-2: #3f9d92;
+  --chart-3: #7bc0b7;
+  --chart-4: var(--brand-accent);
+  --chart-5: #64736f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-highlight: var(--highlight);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-surface-muted: var(--surface-muted);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ---- Podsumowanie ceny w konfiguratorze klienta ---- */
+.price-summary {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid rgba(15, 40, 36, 0.1);
+  background: linear-gradient(180deg, rgba(15, 118, 110, 0.05), transparent);
+}
+
+.price-summary-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.price-summary-head > div {
+  display: grid;
+  gap: 1px;
+}
+
+.price-summary-head span {
+  color: #5b6b67;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.price-summary-head strong {
+  color: var(--company-primary, #0f766e);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-summary-head small {
+  color: #6b7a76;
+  font-size: 11px;
+}
+
+.price-summary-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: 1px solid rgba(15, 40, 36, 0.14);
+  border-radius: 9px;
+  background: #fff;
+  color: #33443f;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.price-summary-toggle svg {
+  transition: transform 160ms ease;
+}
+
+.price-summary-toggle svg[data-open="true"] {
+  transform: rotate(180deg);
+}
+
+.price-summary-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: #8a6d1f;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.price-summary-lines {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.price-summary-lines > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.price-summary-lines dt {
+  color: #5b6b67;
+}
+
+.price-summary-lines dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-summary-total {
+  padding-top: 5px;
+  border-top: 1px solid rgba(15, 40, 36, 0.1);
+  font-weight: 700;
 }

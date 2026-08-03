@@ -22,6 +22,9 @@ export async function generateOrderPdf({
   setLightingPreviewSuppressed,
   setQualityOverride,
   onProgress,
+  // Wycena policzona serwerowo przy zapisie zamówienia. Dokument nigdy nie
+  // liczy jej sam — bez tego cena w PDF byłaby nieautorytatywna.
+  quote = null,
 }) {
   const report = (phase, label) => onProgress?.({ phase, label });
 
@@ -51,7 +54,7 @@ export async function generateOrderPdf({
   report("document", "Składanie dokumentu…");
   const pdfMake = await pdfMakePromise;
   const date = new Date();
-  const document = buildOrderDocument({ config, summary, shots, date });
+  const document = buildOrderDocument({ config, summary, shots, date, quote });
   const orderNo = orderNumberFor(config, date);
   const fileName = `Zamowienie-${orderNo}.pdf`;
 

@@ -11,11 +11,12 @@ import {
   Payment,
   Subscription,
 } from "@/server/db/models";
-import { createPayUOrder, payuConfigured } from "@/server/payu/client";
+import { applicationUrl, createPayUOrder, payuConfigured } from "@/server/payu/client";
 import { payUPriceDescription, resolvePayUChargePrice } from "@/server/payu/pricing";
 import { seedSaasCatalog } from "@/server/seed";
 import { writeAudit } from "@/server/audit";
 import { getPlanDefinition } from "@/server/services/planService";
+import { apiError } from "@/server/apiError";
 
 export const runtime = "nodejs";
 
@@ -34,7 +35,9 @@ export async function POST(request: NextRequest) {
     }
 
     const input = onboardingSchema.parse(await request.json());
-    const requestOrigin = new URL(request.url).origin;
+    // Never derive PayU callbacks from the request URL — the Host header is
+    // client-controlled and would let a notification be aimed off-domain.
+    const appOrigin = applicationUrl();
     if (input.billingMode === "RECURRING_MONTHLY" && !input.cardToken) {
       return NextResponse.json({ error: "Brakuje tokena bezpiecznego formularza PayU." }, { status: 400 });
     }
@@ -59,20 +62,40 @@ export async function POST(request: NextRequest) {
     const email = user?.primaryEmailAddress?.emailAddress;
     if (!email) return NextResponse.json({ error: "Konto Clerk nie ma zweryfikowanego adresu e-mail." }, { status: 400 });
 
-    const company = await Company.create({
-      ownerClerkUserId: identity.userId,
-      slug: input.slug,
-      displayName: input.companyName,
-      code: companyCode(input.companyName),
-      status: "ACTIVE",
-      branding: {
-        name: input.companyName,
-        primaryColor: "#0f766e",
-        accentColor: "#f59e0b",
-        supportEmail: email,
-      },
-      billing: { legalName: input.companyName, email },
-    });
+    // `Company.slug` and `Company.ownerClerkUserId` are both unique, so a
+    // concurrent double submit fails here rather than creating a second
+    // company for the same owner. The check above only makes the common case
+    // produce a friendlier message.
+    let company: any;
+    try {
+      company = await Company.create({
+        ownerClerkUserId: identity.userId,
+        slug: input.slug,
+        displayName: input.companyName,
+        code: companyCode(input.companyName),
+        status: "ACTIVE",
+        branding: {
+          name: input.companyName,
+          primaryColor: "#0f766e",
+          accentColor: "#f59e0b",
+          supportEmail: email,
+        },
+        billing: { legalName: input.companyName, email },
+      });
+    } catch (error: any) {
+      if (error?.code === 11000) {
+        const duplicateSlug = Object.keys(error?.keyPattern || {}).includes("slug");
+        return NextResponse.json(
+          {
+            error: duplicateSlug
+              ? "Ten adres firmy jest już zajęty."
+              : "To konto ma już utworzoną firmę.",
+          },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
 
     await CompanyMembership.create({
       companyId: company._id,
@@ -164,8 +187,8 @@ export async function POST(request: NextRequest) {
         },
         token: input.billingMode === "RECURRING_MONTHLY" ? input.cardToken : undefined,
         recurring: input.billingMode === "RECURRING_MONTHLY" ? "FIRST" : undefined,
-        continueUrl: `${requestOrigin}/${input.slug}/dashboard/billing?payu=return`,
-        notifyUrl: `${requestOrigin}/api/payu/notify`,
+        continueUrl: `${appOrigin}/${input.slug}/dashboard/billing?payu=return`,
+        notifyUrl: `${appOrigin}/api/payu/notify`,
       });
       await Payment.updateOne(
         { _id: payment._id },
@@ -193,7 +216,6 @@ export async function POST(request: NextRequest) {
       throw error;
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Nie udało się utworzyć firmy.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return apiError(error, "Nie udało się utworzyć firmy.");
   }
 }

@@ -4,6 +4,7 @@ import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 import { CompanyMembership, Order, OrderEvent } from "@/server/db/models";
 import { ORDER_STATUSES } from "@/types/saas";
+import { apiError } from "@/server/apiError";
 
 const updateOrderSchema = z.object({
   status: z.enum(ORDER_STATUSES).optional(),
@@ -95,9 +96,6 @@ export async function PATCH(
     });
     return NextResponse.json({ order: updated });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Nie udało się zmienić zamówienia." },
-      { status: 400 },
-    );
+    return apiError(error, "Nie udało się zmienić zamówienia.");
   }
 }

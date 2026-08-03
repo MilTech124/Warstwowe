@@ -103,3 +103,30 @@ test("nieudana płatność, koniec okresu lub zawieszenie zerują wszystkie funk
     assert.equal(Object.values(result.features).some(Boolean), false);
   }
 });
+
+test("cennik jest funkcją pakietu Gold i wyższych", () => {
+  assert.equal(resolveEntitlements({ packageCode: "STANDARD", ...activeInput }).features.pricing, false);
+  for (const packageCode of ["GOLD", "PLATINUM", "DIAMOND"] as const) {
+    assert.equal(
+      resolveEntitlements({ packageCode, ...activeInput }).features.pricing,
+      true,
+      packageCode,
+    );
+  }
+});
+
+test("firma może wyłączyć cennik, a superadmin włączyć go poza pakietem", () => {
+  const disabled = resolveEntitlements({
+    packageCode: "GOLD",
+    ...activeInput,
+    settings: { manuallyEnabled: true, disabledFeatures: ["pricing"] },
+  });
+  assert.equal(disabled.features.pricing, false);
+
+  const forced = resolveEntitlements({
+    packageCode: "STANDARD",
+    ...activeInput,
+    overrides: [{ feature: "pricing", mode: "FORCE_ENABLE" }],
+  });
+  assert.equal(forced.features.pricing, true);
+});

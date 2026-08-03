@@ -7,6 +7,12 @@ import { applyPayUOrderStatus } from "@/server/services/paymentStatusService";
 
 export const runtime = "nodejs";
 
+/**
+ * Outcomes that are worth another delivery attempt rather than a final 200.
+ * A notification can legitimately overtake our own Payment insert.
+ */
+const RETRYABLE_REASONS = new Set(["PAYMENT_NOT_FOUND"]);
+
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const signature =
@@ -35,19 +41,36 @@ export async function POST(request: NextRequest) {
         payload,
       });
     } catch (error: any) {
-      if (error?.code === 11000) return new NextResponse(null, { status: 200 });
+      if (error?.code !== 11000) throw error;
+      // The event row is written before processing, so a duplicate key alone
+      // does not mean the event was handled — an earlier delivery may have
+      // crashed mid-flight. Only skip once a run reached a terminal outcome,
+      // otherwise the retry would be acknowledged and the payment lost.
+      const existing: any = await WebhookEvent.findOne({ eventKey }).lean();
+      if (existing?.processedAt) return new NextResponse(null, { status: 200 });
+    }
+
+    let result;
+    try {
+      result = await applyPayUOrderStatus(payuOrder, payload);
+    } catch (error) {
+      await WebhookEvent.updateOne(
+        { eventKey },
+        { $set: { processingError: error instanceof Error ? error.message : String(error) } },
+      ).catch(() => {});
       throw error;
     }
 
-    const result = await applyPayUOrderStatus(payuOrder, payload);
-    if (!result.applied) {
-      await WebhookEvent.updateOne(
-        { eventKey },
-        { $set: { processedAt: new Date(), processingError: result.reason } },
-      );
-      return new NextResponse(null, { status: 200 });
+    if (!result.applied && RETRYABLE_REASONS.has(result.reason as string)) {
+      // e.g. the notification beat our own Payment write — ask PayU to retry.
+      await WebhookEvent.updateOne({ eventKey }, { $set: { processingError: result.reason } });
+      return NextResponse.json({ error: result.reason }, { status: 503 });
     }
-    await WebhookEvent.updateOne({ eventKey }, { $set: { processedAt: new Date() } });
+
+    await WebhookEvent.updateOne(
+      { eventKey },
+      { $set: { processedAt: new Date(), processingError: result.applied ? null : result.reason } },
+    );
     return new NextResponse(null, { status: 200 });
   } catch (error) {
     return NextResponse.json(

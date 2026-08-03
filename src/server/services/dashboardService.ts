@@ -17,6 +17,31 @@ import {
   WebhookEvent,
 } from "@/server/db/models";
 import { demoBootstrap, findCompanyBySlug, getCompanyAdminSummary } from "@/server/services/companyService";
+import { getPresetDefaults, getPresetOpenings, PRESETS } from "@/config/catalog";
+import { DEFAULT_FRONT_PROJECTION } from "@/config/frontProjection";
+import { DEFAULT_LIGHTING } from "@/config/lighting";
+import { DEFAULT_STRUCTURE } from "@/scene/structure/inputs";
+
+function demoConfigurationSnapshot() {
+  const preset = "double_garage";
+  const defaults = getPresetDefaults(preset);
+  return {
+    schemaVersion: 12,
+    preset,
+    dimensions: { ...PRESETS[preset].dimensions, lengthM: 7 },
+    viewMode: "full",
+    cameraMode: "orbit",
+    showDimensions: true,
+    roof: { ...defaults.roof, overhangM: { ...defaults.roof.overhangM } },
+    cladding: { ...defaults.cladding },
+    flashings: { ...defaults.flashings },
+    gutters: { ...defaults.gutters },
+    frontProjection: { ...DEFAULT_FRONT_PROJECTION, depthM: 0.65 },
+    lighting: { ...DEFAULT_LIGHTING, interiorLighting: true, gateLamps: true },
+    structure: { ...DEFAULT_STRUCTURE },
+    openings: getPresetOpenings(preset),
+  };
+}
 
 const demoOrders = [
   {
@@ -69,29 +94,45 @@ export async function getDashboardOverview(slug: string) {
       ...summary,
       stats: { total: 37, new: 6, accepted: 12, conversion: 32 },
       recentOrders: demoOrders,
-      chart: [3, 5, 4, 8, 6, 9, 11, 7, 12, 10, 14, 16],
+      chart: buildMonthlySeries([3, 5, 4, 8, 6, 9, 11, 7, 12, 10, 14, 16]),
+      trend: { deltaPercent: 14, label: "vs poprzedni miesiąc" },
+      quotedValue: null,
       role: "OWNER",
     };
   }
 
   const companyId = (summary.company as any)._id;
-  const [total, fresh, accepted, recentOrders, monthGroups] = await Promise.all([
+  // Anchor the window to the start of the month 11 months back so the chart is
+  // always the last 12 months — the previous query took the 12 *oldest* months.
+  const windowStart = new Date();
+  windowStart.setUTCDate(1);
+  windowStart.setUTCHours(0, 0, 0, 0);
+  windowStart.setUTCMonth(windowStart.getUTCMonth() - 11);
+
+  const [total, fresh, accepted, recentOrders, monthGroups, quotedValue] = await Promise.all([
     Order.countDocuments({ companyId }),
     Order.countDocuments({ companyId, status: "NEW" }),
     Order.countDocuments({ companyId, status: "ACCEPTED" }),
     Order.find({ companyId }).sort({ submittedAt: -1 }).limit(6).lean(),
     Order.aggregate([
-      { $match: { companyId } },
+      { $match: { companyId, submittedAt: { $gte: windowStart } } },
       {
         $group: {
           _id: { $dateToString: { format: "%Y-%m", date: "$submittedAt" } },
           count: { $sum: 1 },
         },
       },
-      { $sort: { _id: 1 } },
-      { $limit: 12 },
+    ]),
+    // Łączna wartość brutto wycenionych zamówień; null gdy żadne nie ma wyceny.
+    Order.aggregate([
+      { $match: { companyId, "quote.totalGross": { $gt: 0 } } },
+      { $group: { _id: null, sum: { $sum: "$quote.totalGross" }, count: { $sum: 1 } } },
     ]),
   ]);
+
+  const counts = new Map<string, number>(monthGroups.map((item) => [item._id, item.count]));
+  const chart = monthKeys(windowStart).map((key) => counts.get(key) ?? 0);
+
   return {
     ...summary,
     stats: {
@@ -101,14 +142,76 @@ export async function getDashboardOverview(slug: string) {
       conversion: total ? Math.round((accepted / total) * 100) : 0,
     },
     recentOrders,
-    chart: monthGroups.map((item) => item.count),
+    chart: buildMonthlySeries(chart, windowStart),
+    trend: monthOverMonthTrend(chart),
+    quotedValue: quotedValue[0]
+      ? { totalGross: quotedValue[0].sum, orderCount: quotedValue[0].count }
+      : null,
     role: (access as any).companyRole,
   };
 }
 
-export async function getCompanyOrders(slug: string, query?: { status?: string; search?: string }) {
+const MONTH_LABELS = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
+
+function monthKeys(windowStart: Date) {
+  return Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(windowStart);
+    date.setUTCMonth(date.getUTCMonth() + index);
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+}
+
+/** Pairs each monthly count with a Polish label so the chart can show an axis. */
+function buildMonthlySeries(counts: number[], windowStart?: Date) {
+  const start = windowStart ?? (() => {
+    const date = new Date();
+    date.setUTCDate(1);
+    date.setUTCMonth(date.getUTCMonth() - (counts.length - 1));
+    return date;
+  })();
+  return counts.map((value, index) => {
+    const date = new Date(start);
+    date.setUTCMonth(date.getUTCMonth() + index);
+    return { value, label: MONTH_LABELS[date.getUTCMonth()], year: date.getUTCFullYear() };
+  });
+}
+
+/**
+ * Real month-over-month change. The panel used to show a hardcoded
+ * "+12% vs poprzedni okres" on every account.
+ */
+function monthOverMonthTrend(counts: number[]) {
+  if (counts.length < 2) return null;
+  const current = counts[counts.length - 1];
+  const previous = counts[counts.length - 2];
+  if (!previous) return current ? { deltaPercent: null, label: "pierwszy miesiąc ze zleceniami" } : null;
+  return {
+    deltaPercent: Math.round(((current - previous) / previous) * 100),
+    label: "vs poprzedni miesiąc",
+  };
+}
+
+export const ORDERS_PAGE_SIZE = 25;
+
+/**
+ * Returns one page of orders plus the total. The previous version silently
+ * truncated at 250 rows with no way to reach the rest.
+ */
+export async function getCompanyOrders(
+  slug: string,
+  query?: { status?: string; search?: string; page?: number; pageSize?: number; all?: boolean },
+) {
   const access = await assertCompanyDashboardAccess(slug);
-  if ((access as any).demo) return demoOrders;
+  // `all` is for the CSV export, which must dump the whole funnel.
+  const pageSize = query?.all
+    ? 10_000
+    : Math.min(Math.max(query?.pageSize ?? ORDERS_PAGE_SIZE, 1), 100);
+  const page = query?.all ? 1 : Math.max(query?.page ?? 1, 1);
+
+  if ((access as any).demo) {
+    return { rows: demoOrders, total: demoOrders.length, page: 1, pageSize, pageCount: 1 };
+  }
+
   const company = (access as any).company;
   const filter: Record<string, unknown> = { companyId: company._id };
   if (query?.status && query.status !== "ALL") filter.status = query.status;
@@ -120,7 +223,16 @@ export async function getCompanyOrders(slug: string, query?: { status?: string; 
       { "customer.email": { $regex: search, $options: "i" } },
     ];
   }
-  return Order.find(filter).sort({ submittedAt: -1 }).limit(250).lean();
+
+  const [rows, total] = await Promise.all([
+    Order.find(filter)
+      .sort({ submittedAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean(),
+    Order.countDocuments(filter),
+  ]);
+  return { rows, total, page, pageSize, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
 export async function getCompanyOrder(slug: string, orderId: string) {
@@ -134,13 +246,7 @@ export async function getCompanyOrder(slug: string, orderId: string) {
         assignedClerkUserId: "demo-sales",
         settingsVersion: 2,
         catalogVersion: 1,
-        configurationSnapshot: {
-          schemaVersion: 12,
-          presetId: "single_garage",
-          dimensions: { widthM: 6, lengthM: 7, wallHeightM: 2.5 },
-          roof: { type: "gable", pitchPercent: 12 },
-          cladding: { manufacturerId: "steelprofil", wallColor: "ral7016" },
-        },
+        configurationSnapshot: demoConfigurationSnapshot(),
       },
       events: [
         { _id: "event-1", type: "ORDER_CREATED", createdAt: order.submittedAt },

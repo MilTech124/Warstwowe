@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
-import "@/app/dashboard-premium.css";
+import "@/app/dashboard.css";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { panelThemeCss, resolvePanelTheme } from "@/lib/branding";
 import { getRequestIdentity, requireCompanyMember } from "@/server/auth";
 import { findCompanyBySlug, getConfiguratorBootstrap } from "@/server/services/companyService";
 
@@ -34,16 +35,24 @@ export default async function CompanyDashboardLayout({
     }
   }
 
+  // Emitted at document level, not on the shell: Radix and Sonner portal into
+  // <body>, so panel-scoped variables would never reach them.
+  const theme = resolvePanelTheme(bootstrap.company.branding);
+
   return (
-    <DashboardShell
+    <>
+      <style>{panelThemeCss(theme)}</style>
+      <DashboardShell
       slug={firma}
       companyName={bootstrap.company.branding.name}
       packageCode={bootstrap.packageCode}
       accessActive={bootstrap.accessActive}
       role={role}
+      features={bootstrap.capabilities}
       superadminAccess={superadminAccess}
-    >
-      {children}
-    </DashboardShell>
+      >
+        {children}
+      </DashboardShell>
+    </>
   );
 }

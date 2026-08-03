@@ -1,17 +1,59 @@
+import { applyDunningFailure } from "@/domain/dunning";
+import { decidePayUStatusTransition, verifyPayUAmount } from "@/domain/payuStatus";
 import { writeAudit } from "@/server/audit";
 import { Payment, Subscription } from "@/server/db/models";
 import { retrievePayUOrder } from "@/server/payu/client";
+
+/** Moves a subscription one step through the dunning cycle (see @/domain/dunning). */
+function markSubscriptionPastDue(subscription: any, now = new Date()) {
+  const patch = applyDunningFailure(subscription, now);
+  subscription.status = patch.status;
+  subscription.dunningAttempt = patch.dunningAttempt;
+  subscription.graceEndsAt = patch.graceEndsAt;
+  subscription.nextRetryAt = patch.nextRetryAt ?? undefined;
+  return patch;
+}
 
 type PayUOrderStatus = {
   orderId?: string;
   extOrderId?: string;
   status?: string;
+  totalAmount?: string | number;
+  currencyCode?: string;
 };
 
 export async function applyPayUOrderStatus(payuOrder: PayUOrderStatus, payload: unknown) {
   if (!payuOrder.extOrderId || !payuOrder.status) return { applied: false, reason: "INVALID_ORDER" };
   const payment: any = await Payment.findOne({ extOrderId: payuOrder.extOrderId });
   if (!payment) return { applied: false, reason: "PAYMENT_NOT_FOUND" };
+
+  const transition = decidePayUStatusTransition(payment.status, payuOrder.status);
+  if (!transition.ok) return { applied: false, reason: transition.reason };
+
+  if (payuOrder.status === "COMPLETED") {
+    const amount = verifyPayUAmount({
+      expectedAmountGross: payment.amountGross,
+      expectedCurrency: payment.currency,
+      reportedTotalAmount: payuOrder.totalAmount,
+      reportedCurrency: payuOrder.currencyCode,
+    });
+    if (!amount.ok) {
+      await writeAudit({
+        companyId: payment.companyId,
+        actorType: "SYSTEM",
+        action: "payment.amount_mismatch",
+        entityType: "Payment",
+        entityId: String(payment._id),
+        after: {
+          reason: amount.reason,
+          expectedGrosz: amount.expectedGrosz,
+          reportedGrosz: amount.reportedGrosz,
+          extOrderId: payment.extOrderId,
+        },
+      });
+      return { applied: false, reason: amount.reason };
+    }
+  }
 
   const previousPaymentStatus = payment.status;
   payment.payuOrderId = payuOrder.orderId || payment.payuOrderId;
@@ -34,6 +76,10 @@ export async function applyPayUOrderStatus(payuOrder: PayUOrderStatus, payload: 
         subscription.trialEndsAt = undefined;
         subscription.lastPaymentAt = new Date();
       }
+      // The charge settled — clear any dunning state left by an earlier decline.
+      subscription.graceEndsAt = undefined;
+      subscription.dunningAttempt = 0;
+      subscription.nextRetryAt = undefined;
       subscription.currentPeriodStart = payment.periodStart;
       subscription.currentPeriodEnd = payment.periodEnd;
       if (payment.packageCode) {
@@ -55,8 +101,17 @@ export async function applyPayUOrderStatus(payuOrder: PayUOrderStatus, payload: 
         },
       });
     }
-  } else if (payuOrder.status === "CANCELED" && previousPaymentStatus !== "CANCELED") {
-    subscription.status = Number(payment.amountGross) === 0 ? "ONBOARDING" : "PAYMENT_FAILED";
+  } else if (
+    (payuOrder.status === "CANCELED" || payuOrder.status === "REJECTED")
+    && previousPaymentStatus !== payuOrder.status
+  ) {
+    if (Number(payment.amountGross) === 0) {
+      // Card verification for the trial failed — the company never got in.
+      subscription.status = "ONBOARDING";
+    } else {
+      // A declined renewal enters dunning instead of cutting access instantly.
+      markSubscriptionPastDue(subscription);
+    }
     await subscription.save();
     await writeAudit({
       companyId: payment.companyId,

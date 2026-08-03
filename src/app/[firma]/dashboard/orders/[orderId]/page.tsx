@@ -1,12 +1,48 @@
 import Link from "next/link";
-import { ArrowLeft, Box, Clock3, FileText, Mail, PackageCheck, Phone, UserRound } from "lucide-react";
+import { ArrowLeft, Box, Clock3, Eye, FileText, Mail, MapPin, Phone, UserRound } from "lucide-react";
 import { notFound } from "next/navigation";
-import { PageHeading, StatusBadge } from "@/components/dashboard/DashboardBits";
+import { EmptyState, PageHeading, StatusBadge } from "@/components/dashboard/DashboardBits";
 import { OrderManager } from "@/components/dashboard/OrderManager";
+import { OrderConfigurationDetails } from "@/components/dashboard/OrderConfigurationDetails";
 import { getCompanyOrder, getCompanyTeam } from "@/server/services/dashboardService";
+import { QuoteIncompleteBadge, QuoteTable } from "@/components/dashboard/QuoteTable";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 function formatDate(value: string | Date) {
-  return new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium", timeStyle: "short" }).format(
+    new Date(value),
+  );
+}
+
+function ContactRow({
+  icon,
+  label,
+  children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <span aria-hidden="true" className="mt-0.5 text-muted-foreground">
+        {icon}
+      </span>
+      <span className="grid min-w-0 leading-tight">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="truncate text-sm font-medium">{children}</span>
+      </span>
+    </div>
+  );
 }
 
 export default async function OrderDetailsPage({
@@ -21,65 +57,177 @@ export default async function OrderDetailsPage({
 
   return (
     <>
-      <Link className="back-link" href={`/${firma}/dashboard/orders`}><ArrowLeft size={15} /> Wróć do zamówień</Link>
+      <Button asChild variant="link" size="sm" className="mb-2 px-0">
+        <Link href={`/${firma}/dashboard/orders`}>
+          <ArrowLeft size={15} /> Wróć do zamówień
+        </Link>
+      </Button>
+
       <PageHeading
         eyebrow="Zamówienie"
         title={order.number}
         description={`Przesłano ${formatDate(order.submittedAt)}`}
         actions={<StatusBadge status={order.status} />}
       />
-      <div className="order-detail-layout">
-        <div className="order-detail-main">
-          <section className="dashboard-card order-contact-card">
-            <div className="card-title"><div><span>Klient</span><h2>Dane kontaktowe</h2></div></div>
-            <div className="contact-grid">
-              <div><UserRound size={16} /><span><small>Imię i nazwisko / firma</small><strong>{order.customer.name}</strong></span></div>
-              <div><Mail size={16} /><span><small>E-mail</small><a href={`mailto:${order.customer.email}`}>{order.customer.email}</a></span></div>
-              <div><Phone size={16} /><span><small>Telefon</small><a href={`tel:${order.customer.phone}`}>{order.customer.phone}</a></span></div>
-            </div>
-          </section>
-          <section className="dashboard-card order-snapshot-card">
-            <div className="card-title">
-              <div><span>Snapshot v{order.configurationSnapshot?.schemaVersion || "—"}</span><h2>Konfiguracja obiektu</h2></div>
-              <span className="card-heading-icon"><Box size={20} /></span>
-            </div>
-            <div className="snapshot-summary">
-              <article><span>Preset</span><strong>{order.configurationSnapshot?.presetId || "Konfiguracja własna"}</strong></article>
-              <article><span>Wymiary</span><strong>{Object.values(order.configurationSnapshot?.dimensions || {}).join(" × ") || "—"}</strong></article>
-              <article><span>Wersja katalogu</span><strong>{order.catalogVersion || 1}</strong></article>
-              <article><span>Wersja ustawień</span><strong>{order.settingsVersion}</strong></article>
-            </div>
-            <details className="snapshot-json">
-              <summary><PackageCheck size={16} /> Pełny snapshot konfiguracji</summary>
-              <pre>{JSON.stringify(order.configurationSnapshot, null, 2)}</pre>
-            </details>
-          </section>
-          <section className="dashboard-card">
-            <div className="card-title"><div><span>Historia</span><h2>Aktywność zamówienia</h2><p>Chronologiczny zapis zmian i notatek.</p></div><span className="card-heading-icon"><Clock3 size={19} /></span></div>
-            <div className="order-timeline">
-              {data.events.map((event: any) => (
-                <div key={String(event._id)}>
-                  <i />
-                  <span>
-                    <strong>{event.type.replaceAll("_", " ")}</strong>
-                    {event.note && <p>{event.note}</p>}
-                    <small>{formatDate(event.createdAt)}</small>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid gap-4">
+          <Card>
+            <CardHeader>
+              <span className="text-[11px] font-semibold tracking-[0.13em] text-primary uppercase">
+                Klient
+              </span>
+              <CardTitle>Dane kontaktowe</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <ContactRow icon={<UserRound size={16} />} label="Imię i nazwisko / firma">
+                {order.customer.name}
+              </ContactRow>
+              <ContactRow icon={<Mail size={16} />} label="E-mail">
+                <a href={`mailto:${order.customer.email}`} className="hover:underline">
+                  {order.customer.email}
+                </a>
+              </ContactRow>
+              <ContactRow icon={<Phone size={16} />} label="Telefon">
+                <a href={`tel:${order.customer.phone}`} className="hover:underline">
+                  {order.customer.phone}
+                </a>
+              </ContactRow>
+              {order.customer.address && (
+                <ContactRow icon={<MapPin size={16} />} label="Adres">
+                  {order.customer.address}
+                </ContactRow>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <span className="text-[11px] font-semibold tracking-[0.13em] text-primary uppercase">
+                Specyfikacja zamówienia
+              </span>
+              <CardTitle>Konfiguracja obiektu</CardTitle>
+              <CardDescription>
+                Komplet parametrów zapisanych w chwili wysłania zamówienia.
+              </CardDescription>
+              <CardAction>
+                <Button asChild size="sm">
+                  <Link href={`/${firma}/dashboard/orders/${orderId}/preview`}>
+                    <Eye size={15} /> Zobacz konfigurację 3D
+                  </Link>
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <OrderConfigurationDetails
+                snapshot={order.configurationSnapshot}
+                catalogVersion={order.catalogVersion}
+                settingsVersion={order.settingsVersion}
+              />
+            </CardContent>
+          </Card>
+
+          {order.quote && (
+            <Card>
+              <CardHeader>
+                <span className="text-[11px] font-semibold tracking-[0.13em] text-primary uppercase">
+                  Wycena
+                </span>
+                <CardTitle>Zestawienie kosztów</CardTitle>
+                <CardDescription>
+                  Ceny obowiązujące w chwili złożenia zamówienia. Późniejsze zmiany cennika ich nie
+                  ruszają.
+                </CardDescription>
+                <CardAction className="flex flex-wrap items-center gap-2">
+                  {order.priceListVersion != null && (
+                    <Badge variant="secondary">Cennik v{order.priceListVersion}</Badge>
+                  )}
+                  <QuoteIncompleteBadge quote={order.quote} />
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+                <QuoteTable quote={order.quote} />
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="gap-0">
+            <CardHeader className="border-b [.border-b]:pb-5">
+              <span className="text-[11px] font-semibold tracking-[0.13em] text-primary uppercase">
+                Historia
+              </span>
+              <CardTitle>Aktywność zamówienia</CardTitle>
+              <CardDescription>Chronologiczny zapis zmian i notatek.</CardDescription>
+              <CardAction>
+                <span
+                  aria-hidden="true"
+                  className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary"
+                >
+                  <Clock3 size={18} />
+                </span>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="p-0">
+              {data.events.length ? (
+                <ol className="divide-y divide-border">
+                  {data.events.map((event: any) => (
+                    <li key={String(event._id)} className="flex gap-3 px-5 py-3.5">
+                      <span
+                        aria-hidden="true"
+                        className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"
+                      />
+                      <span className="grid min-w-0 gap-0.5 leading-tight">
+                        <span className="text-sm font-medium">
+                          {event.type.replaceAll("_", " ")}
+                        </span>
+                        {event.note && (
+                          <span className="text-sm text-muted-foreground text-pretty">
+                            {event.note}
+                          </span>
+                        )}
+                        <time
+                          dateTime={new Date(event.createdAt).toISOString()}
+                          className="text-xs text-muted-foreground"
+                        >
+                          {formatDate(event.createdAt)}
+                        </time>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyState
+                  icon={<Clock3 size={24} />}
+                  title="Brak zdarzeń"
+                  description="Zmiany statusu i notatki pojawią się tutaj."
+                />
+              )}
+            </CardContent>
+          </Card>
+
           {order.pdfBlobPath && (
-            <a className="secondary-button" href={`/api/companies/${firma}/orders/${orderId}/pdf`}>
-              <FileText size={15} /> Pobierz PDF zamówienia
-            </a>
+            <Button asChild variant="outline" className="w-fit">
+              <a href={`/api/companies/${firma}/orders/${orderId}/pdf`}>
+                <FileText size={15} /> Pobierz PDF zamówienia
+              </a>
+            </Button>
           )}
         </div>
+
         {data.readOnly ? (
-          <section className="dashboard-card order-manager">
-            <div className="card-title"><div><span>Nadzór</span><h2>Widok tylko do odczytu</h2></div></div>
-            <p className="muted-copy">Działania na zamówieniu są wyłączone w trybie superadmina.</p>
-          </section>
+          <Card>
+            <CardHeader>
+              <span className="text-[11px] font-semibold tracking-[0.13em] text-primary uppercase">
+                Nadzór
+              </span>
+              <CardTitle>Widok tylko do odczytu</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Działania na zamówieniu są wyłączone w trybie superadmina.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
           <OrderManager
             slug={firma}

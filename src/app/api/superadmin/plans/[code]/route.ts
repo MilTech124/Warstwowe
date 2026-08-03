@@ -4,6 +4,7 @@ import { requireSuperadmin } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 import { Plan, PlanVersion } from "@/server/db/models";
 import { FEATURE_KEYS, PACKAGE_CODES } from "@/types/saas";
+import { apiError } from "@/server/apiError";
 
 const planPatchSchema = z.object({
   monthlyGross: z.number().int().positive(),
@@ -54,9 +55,6 @@ export async function PATCH(
     });
     return NextResponse.json({ plan });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Nie udało się zapisać pakietu." },
-      { status: 400 },
-    );
+    return apiError(error, "Nie udało się zapisać pakietu.");
   }
 }

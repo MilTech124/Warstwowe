@@ -2,6 +2,7 @@ import { get } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { requireCompanyMember } from "@/server/auth";
 import { Order } from "@/server/db/models";
+import { apiError } from "@/server/apiError";
 
 export const runtime = "nodejs";
 
@@ -33,9 +34,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Nie udało się pobrać PDF." },
-      { status: 400 },
-    );
+    return apiError(error, "Nie udało się pobrać PDF.");
   }
 }

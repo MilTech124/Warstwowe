@@ -24,6 +24,7 @@ const coreFeatures = {
   gateAnimations: false,
   lighting: false,
   orderPdf: false,
+  pricing: false,
 } satisfies FeatureMap;
 
 export const PACKAGE_DEFINITIONS: Record<PackageCode, PackageDefinition> = {
@@ -48,8 +49,9 @@ export const PACKAGE_DEFINITIONS: Record<PackageCode, PackageDefinition> = {
       orderAnalytics: true,
       csvExport: true,
       emailNotifications: true,
+      pricing: true,
     },
-    description: "Wypusty frontowe, analityka i narzędzia zespołu sprzedaży.",
+    description: "Wypusty frontowe, cennik z automatyczną wyceną i narzędzia zespołu sprzedaży.",
   },
   PLATINUM: {
     code: "PLATINUM",
@@ -64,6 +66,7 @@ export const PACKAGE_DEFINITIONS: Record<PackageCode, PackageDefinition> = {
       csvExport: true,
       emailNotifications: true,
       structureView: true,
+      pricing: true,
     },
     description: "Widok konstrukcji i dane techniczne obiektu.",
   },
@@ -83,6 +86,7 @@ export const PACKAGE_DEFINITIONS: Record<PackageCode, PackageDefinition> = {
       gateAnimations: true,
       lighting: true,
       orderPdf: true,
+      pricing: true,
     },
     description: "Pełna prezentacja 3D, oświetlenie, animacje i dokumenty PDF.",
   },

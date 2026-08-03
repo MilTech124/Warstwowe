@@ -18,6 +18,7 @@ export interface ResolveEntitlementsInput {
   packageCode: PackageCode;
   subscriptionStatus: SubscriptionStatus;
   periodEnd?: Date | string | null;
+  graceEndsAt?: Date | string | null;
   companySuspended?: boolean;
   settings?: Pick<CompanyConfiguratorSettings, "disabledFeatures" | "manuallyEnabled">;
   overrides?: FeatureOverride[];
@@ -26,14 +27,24 @@ export interface ResolveEntitlementsInput {
   now?: Date;
 }
 
+/**
+ * Fail-closed: a subscription without an end date grants NO access. A missing
+ * `periodEnd` used to mean "unlimited", which turned any incomplete row (e.g. a
+ * superadmin PATCH clearing `currentPeriodEnd`) into a permanent free account.
+ *
+ * `PAST_DUE` keeps the configurator running while the dunning cycle retries the
+ * card, but only until `graceEndsAt` — so one declined charge no longer cuts a
+ * paying company off instantly.
+ */
 export function isSubscriptionAccessActive(
   status: SubscriptionStatus,
   periodEnd: Date | string | null | undefined,
   now = new Date(),
+  graceEndsAt?: Date | string | null,
 ) {
-  if (status === "TRIALING") return !periodEnd || new Date(periodEnd) > now;
-  if (status !== "ACTIVE") return false;
-  return !periodEnd || new Date(periodEnd) > now;
+  if (status === "PAST_DUE") return Boolean(graceEndsAt) && new Date(graceEndsAt!) > now;
+  if (status !== "ACTIVE" && status !== "TRIALING") return false;
+  return Boolean(periodEnd) && new Date(periodEnd!) > now;
 }
 
 export function resolveEntitlements(input: ResolveEntitlementsInput) {
@@ -41,7 +52,7 @@ export function resolveEntitlements(input: ResolveEntitlementsInput) {
   const accessActive =
     !input.companySuspended
     && input.settings?.manuallyEnabled !== false
-    && isSubscriptionAccessActive(input.subscriptionStatus, input.periodEnd, now);
+    && isSubscriptionAccessActive(input.subscriptionStatus, input.periodEnd, now, input.graceEndsAt);
   const definition = PACKAGE_DEFINITIONS[input.packageCode];
   const features = { ...definition.features, ...(input.planFeatures ?? {}) };
 

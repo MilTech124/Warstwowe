@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCompanyOrders } from "@/server/services/dashboardService";
 import { getConfiguratorBootstrap } from "@/server/services/companyService";
+import { apiError } from "@/server/apiError";
 
 function csvCell(value: unknown) {
   const text = String(value ?? "").replaceAll('"', '""');
@@ -17,7 +18,8 @@ export async function GET(
     if (!bootstrap?.capabilities.csvExport) {
       return NextResponse.json({ error: "Eksport CSV nie jest dostępny w tym pakiecie." }, { status: 403 });
     }
-    const orders = await getCompanyOrders(firma);
+    // The export is a full dump, so it deliberately bypasses page-sized reads.
+    const { rows: orders } = await getCompanyOrders(firma, { all: true });
     const rows = [
       ["Numer", "Status", "Klient", "E-mail", "Telefon", "Data"],
       ...orders.map((order: any) => [
@@ -37,9 +39,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Nie udało się wyeksportować zamówień." },
-      { status: 400 },
-    );
+    return apiError(error, "Nie udało się wyeksportować zamówień.");
   }
 }

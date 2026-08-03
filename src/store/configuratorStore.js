@@ -27,6 +27,7 @@ import { clamp } from "@/lib/utils";
 import { roofPitchBounds } from "@/scene/geometry";
 import { DEFAULT_STRUCTURE } from "@/scene/structure/inputs";
 import { SNOW_ZONES, REINFORCEMENT_LEVELS } from "@/scene/structure/spec";
+import { isAllowed, normalizeConfigurationAvailability } from "@/domain/configuratorAvailability";
 
 const defaultPreset = getPresetDefaults("single_garage");
 
@@ -57,10 +58,10 @@ const defaultConfig = {
   openings: getPresetOpenings("single_garage"),
 };
 
-export function createInitialConfiguratorConfig(presetId = "single_garage") {
+export function createInitialConfiguratorConfig(presetId = "single_garage", settings = {}, capabilities = {}) {
   const preset = PRESETS[presetId] ? presetId : "single_garage";
   const defaults = getPresetDefaults(preset);
-  return {
+  return normalizeConfigurationAvailability({
     ...defaultConfig,
     preset,
     dimensions: { ...PRESETS[preset].dimensions },
@@ -73,7 +74,34 @@ export function createInitialConfiguratorConfig(presetId = "single_garage") {
     structure: { ...DEFAULT_STRUCTURE },
     order: { ...defaultOrder },
     openings: getPresetOpenings(preset),
-  };
+  }, settings, capabilities);
+}
+
+export function createConfigurationFromSnapshot(snapshot, defaultPresetId = "single_garage", settings = {}, capabilities = {}) {
+  const source = snapshot && typeof snapshot === "object" ? snapshot : {};
+  const requestedPreset = source.preset || source.presetId || defaultPresetId;
+  const preset = PRESETS[requestedPreset] ? requestedPreset : defaultPresetId;
+  const base = createInitialConfiguratorConfig(preset, settings, capabilities);
+  return normalizeConfigurationAvailability({
+    ...base,
+    ...source,
+    schemaVersion: Number(source.schemaVersion || base.schemaVersion),
+    preset,
+    dimensions: { ...base.dimensions, ...(source.dimensions || {}) },
+    roof: {
+      ...base.roof,
+      ...(source.roof || {}),
+      overhangM: { ...base.roof.overhangM, ...(source.roof?.overhangM || {}) },
+    },
+    cladding: { ...base.cladding, ...(source.cladding || {}) },
+    flashings: { ...base.flashings, ...(source.flashings || {}) },
+    gutters: { ...base.gutters, ...(source.gutters || {}) },
+    frontProjection: { ...base.frontProjection, ...(source.frontProjection || {}) },
+    lighting: { ...base.lighting, ...(source.lighting || {}) },
+    structure: { ...base.structure, ...(source.structure || {}) },
+    order: { ...base.order },
+    openings: Array.isArray(source.openings) ? source.openings : base.openings,
+  }, settings, capabilities);
 }
 
 const OPENING_LIMITS = {
@@ -232,7 +260,9 @@ function addOpeningWithPlacement(openings, kind, dimensions) {
   return openings;
 }
 
-export function createConfiguratorStore(initialConfig = createInitialConfiguratorConfig()) {
+export function createConfiguratorStore(initialConfig = createInitialConfiguratorConfig(), availability = {}) {
+  const availabilitySettings = availability.settings || {};
+  const availabilityCapabilities = availability.capabilities || {};
   return createStore((set) => ({
   config: initialConfig,
   ui: {
@@ -275,7 +305,7 @@ export function createConfiguratorStore(initialConfig = createInitialConfigurato
       const dimensions = { ...PRESETS[preset].dimensions };
       const defaults = getPresetDefaults(preset);
       return {
-        config: {
+        config: normalizeConfigurationAvailability({
           ...state.config,
           preset,
           dimensions,
@@ -288,7 +318,7 @@ export function createConfiguratorStore(initialConfig = createInitialConfigurato
             frontProjectionAvailable: false,
           }),
           openings: fitOpeningsToDimensions(getPresetOpenings(preset), dimensions),
-        },
+        }, availabilitySettings, availabilityCapabilities),
       };
     }),
   setViewMode: (viewMode) =>
@@ -457,7 +487,7 @@ export function createConfiguratorStore(initialConfig = createInitialConfigurato
     set((state) => ({
       config: {
         ...state.config,
-        openings: state.config.openings.length >= 12
+        openings: state.config.openings.length >= 12 || !isAllowed(availabilitySettings, "allowedOpeningKinds", kind)
           ? state.config.openings
           : addOpeningWithPlacement(state.config.openings, kind, state.config.dimensions),
       },
@@ -499,10 +529,10 @@ export function selectEffectiveQuality(state) {
 
 const ConfiguratorStoreContext = createContext(null);
 
-export function ConfiguratorStoreProvider({ initialConfig, children }) {
+export function ConfiguratorStoreProvider({ initialConfig, availability, children }) {
   const storeRef = useRef(null);
   if (!storeRef.current) {
-    storeRef.current = createConfiguratorStore(initialConfig);
+    storeRef.current = createConfiguratorStore(initialConfig, availability);
   }
   return createElement(ConfiguratorStoreContext.Provider, { value: storeRef.current }, children);
 }

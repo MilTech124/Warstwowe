@@ -1,6 +1,24 @@
 import Link from "next/link";
-import { Download, Eye, FileSearch, Plus, Search, SlidersHorizontal } from "lucide-react";
-import { PageHeading, StatusBadge, orderStatusLabels } from "@/components/dashboard/DashboardBits";
+import { Download, Eye, FileSearch, Plus } from "lucide-react";
+import {
+  EmptyState,
+  PageHeading,
+  StatusBadge,
+  orderStatusLabels,
+} from "@/components/dashboard/DashboardBits";
+import { OrdersFilters } from "@/components/dashboard/OrdersFilters";
+import { Pagination } from "@/components/dashboard/Pagination";
+import { formatPln } from "@/components/dashboard/QuoteTable";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getCompanyOrders } from "@/server/services/dashboardService";
 import { getConfiguratorBootstrap } from "@/server/services/companyService";
 
@@ -9,14 +27,20 @@ export default async function OrdersPage({
   searchParams,
 }: {
   params: Promise<{ firma: string }>;
-  searchParams: Promise<{ status?: string; search?: string }>;
+  searchParams: Promise<{ status?: string; search?: string; page?: string }>;
 }) {
   const { firma } = await params;
   const query = await searchParams;
+  const page = Number.parseInt(query.page ?? "1", 10) || 1;
+
   const [orders, bootstrap] = await Promise.all([
-    getCompanyOrders(firma, query),
+    getCompanyOrders(firma, { status: query.status, search: query.search, page }),
     getConfiguratorBootstrap(firma),
   ]);
+
+  const dateFormat = new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium" });
+  const showPrices = Boolean(bootstrap?.capabilities.pricing);
+
   return (
     <>
       <PageHeading
@@ -25,38 +49,110 @@ export default async function OrdersPage({
         description="Konfiguracje przesłane przez klientów, kontakt i historia obsługi."
         actions={
           <>
-            {bootstrap?.capabilities.csvExport && <a className="secondary-button" href={`/api/companies/${firma}/orders/export`}><Download size={15} /> Eksport CSV</a>}
-            <Link className="primary-button" href={`/${firma}`}><Plus size={15} /> Nowa konfiguracja</Link>
+            {bootstrap?.capabilities.csvExport && (
+              <Button asChild variant="outline">
+                <a href={`/api/companies/${firma}/orders/export`}>
+                  <Download size={15} /> Eksport CSV
+                </a>
+              </Button>
+            )}
+            <Button asChild>
+              <Link href={`/${firma}`}>
+                <Plus size={15} /> Nowa konfiguracja
+              </Link>
+            </Button>
           </>
         }
       />
-      <section className="dashboard-card table-card">
-        <form className="table-filters">
-          <label className="search-field"><Search size={17} aria-hidden="true" /><input name="search" defaultValue={query.search} aria-label="Szukaj zamówienia" placeholder="Numer, klient lub e-mail…" /></label>
-          <label className="filter-select">
-            <SlidersHorizontal size={16} aria-hidden="true" />
-            <select name="status" defaultValue={query.status || "ALL"} aria-label="Status zamówienia">
-              <option value="ALL">Wszystkie statusy</option>
-              {Object.entries(orderStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <button className="secondary-button" type="submit">Filtruj</button>
-        </form>
-        <div className="data-table orders-table">
-          <div className="table-row table-head"><span>Numer</span><span>Klient</span><span>Kontakt</span><span>Data</span><span>Status</span><span /></div>
-          {orders.map((order: any) => (
-            <div className="table-row" key={String(order._id)}>
-              <strong data-label="Numer">{order.number}</strong>
-              <span data-label="Klient">{order.customer.name}</span>
-              <span data-label="Kontakt" className="contact-cell"><small>{order.customer.email}</small><small>{order.customer.phone}</small></span>
-              <span data-label="Data">{new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium" }).format(new Date(order.submittedAt))}</span>
-              <span data-label="Status"><StatusBadge status={order.status} /></span>
-              <Link className="table-action" aria-label={`Podgląd zamówienia ${order.number}`} href={`/${firma}/dashboard/orders/${order._id}`}><Eye size={16} /></Link>
-            </div>
-          ))}
-          {!orders.length && <div className="empty-state"><FileSearch size={28} /><strong>Nie znaleziono zamówień</strong><span>Zmień kryteria wyszukiwania lub utwórz nową konfigurację.</span></div>}
-        </div>
-      </section>
+
+      <Card className="gap-0 overflow-hidden py-0">
+        <CardContent className="border-b p-4">
+          <OrdersFilters
+            defaultSearch={query.search}
+            defaultStatus={query.status ?? "ALL"}
+            statuses={orderStatusLabels}
+          />
+        </CardContent>
+
+        {orders.rows.length ? (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Numer</TableHead>
+                  <TableHead>Klient</TableHead>
+                  <TableHead className="hidden md:table-cell">Kontakt</TableHead>
+                  <TableHead className="hidden sm:table-cell">Data</TableHead>
+                  {showPrices && <TableHead className="text-right">Wartość</TableHead>}
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-12 text-right">
+                    <span className="sr-only">Akcje</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orders.rows.map((order: any) => (
+                  <TableRow key={String(order._id)}>
+                    <TableCell className="font-semibold whitespace-nowrap">{order.number}</TableCell>
+                    <TableCell className="max-w-48 truncate">{order.customer.name}</TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <span className="grid leading-tight">
+                        <span className="truncate text-xs">{order.customer.email}</span>
+                        <span className="text-xs text-muted-foreground">{order.customer.phone}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden whitespace-nowrap text-muted-foreground sm:table-cell">
+                      {dateFormat.format(new Date(order.submittedAt))}
+                    </TableCell>
+                    {showPrices && (
+                      <TableCell className="text-right tabular-nums whitespace-nowrap">
+                        {order.quote ? (
+                          formatPln(order.quote.totalGross)
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <StatusBadge status={order.status} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button asChild variant="ghost" size="icon">
+                        <Link
+                          href={`/${firma}/dashboard/orders/${order._id}`}
+                          aria-label={`Podgląd zamówienia ${order.number}`}
+                        >
+                          <Eye size={16} />
+                        </Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <EmptyState
+            icon={<FileSearch size={28} />}
+            title="Nie znaleziono zamówień"
+            description="Zmień kryteria wyszukiwania lub utwórz nową konfigurację."
+            action={
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/${firma}`}>Otwórz konfigurator</Link>
+              </Button>
+            }
+          />
+        )}
+
+        {orders.pageCount > 1 && (
+          <CardFooter className="justify-between border-t py-4">
+            <span className="text-xs text-muted-foreground">
+              {orders.total} zamówień · strona {orders.page} z {orders.pageCount}
+            </span>
+            <Pagination page={orders.page} pageCount={orders.pageCount} />
+          </CardFooter>
+        )}
+      </Card>
     </>
   );
 }

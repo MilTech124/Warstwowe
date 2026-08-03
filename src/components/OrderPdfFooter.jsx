@@ -60,6 +60,9 @@ export function OrderPdfFooter() {
         orderId: result.order.id,
         receiptToken: result.receiptToken,
         number: result.order.number,
+        // Wycena jest liczona serwerowo i wraca tutaj — PDF powstaje
+        // w przeglądarce, więc bez tego dokument miałby cenę nieautorytatywną.
+        quote: result.quote ?? null,
       };
       setReceipt(nextReceipt);
       setStatus(null);
@@ -85,6 +88,7 @@ export function OrderPdfFooter() {
         setLightingPreviewSuppressed: store.setLightingPreviewSuppressed,
         setQualityOverride: store.setQualityOverride,
         onProgress: setStatus,
+        quote: activeReceipt?.quote ?? null,
       });
 
       const form = new FormData();

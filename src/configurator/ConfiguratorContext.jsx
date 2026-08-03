@@ -16,6 +16,8 @@ const defaultCapabilities = {
   gateAnimations: true,
   lighting: true,
   orderPdf: true,
+  // Tryb standalone nie ma cennika firmy, więc wycena jest domyślnie wyłączona.
+  pricing: false,
 };
 
 const defaultValue = {
@@ -31,6 +33,8 @@ const defaultValue = {
   packageCode: "DIAMOND",
   accessActive: true,
   capabilities: defaultCapabilities,
+  // Stawki dostaje wyłącznie bootstrap firmy, i tylko gdy pokazuje ceny klientom.
+  priceList: null,
   seatLimit: 10,
   settings: {
     version: 1,
@@ -38,10 +42,18 @@ const defaultValue = {
     manuallyEnabled: true,
     defaultPresetId: "single_garage",
     allowedPresetIds: [],
+    allowedRoofTypeIds: [],
+    allowedOpeningKinds: [],
     allowedWallColorIds: [],
     allowedRoofColorIds: [],
     allowedPanelManufacturerIds: [],
     allowedGateManufacturerIds: [],
+    allowedWallPanelModelIds: [],
+    allowedRoofPanelModelIds: [],
+    allowedGateTypeIds: [],
+    allowedGateModelIds: [],
+    allowedDoorModelIds: [],
+    allowedWindowModelIds: [],
     disabledFeatures: [],
     orderNotificationEmails: [],
   },
@@ -94,6 +106,5 @@ export function filterAllowedRecord(record, allowedIds) {
 
 export function filterAllowedColors(colors, allowedIds) {
   if (!Array.isArray(allowedIds) || allowedIds.length === 0) return colors;
-  const filtered = Object.fromEntries(Object.entries(colors).filter(([key]) => allowedIds.includes(key)));
-  return Object.keys(filtered).length ? filtered : colors;
+  return Object.fromEntries(Object.entries(colors).filter(([key]) => allowedIds.includes(key)));
 }

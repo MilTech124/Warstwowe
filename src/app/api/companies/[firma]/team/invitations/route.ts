@@ -6,6 +6,7 @@ import { sendTransactionalEmail } from "@/server/email/smtp";
 import { applicationUrl } from "@/server/payu/client";
 import { getConfiguratorBootstrap } from "@/server/services/companyService";
 import { writeAudit } from "@/server/audit";
+import { apiError } from "@/server/apiError";
 
 const inviteSchema = z.object({
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
@@ -82,9 +83,6 @@ export async function POST(
       emailSent: emailResult.sent,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Nie udało się wysłać zaproszenia." },
-      { status: 400 },
-    );
+    return apiError(error, "Nie udało się wysłać zaproszenia.");
   }
 }

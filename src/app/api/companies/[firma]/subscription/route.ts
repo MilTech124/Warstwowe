@@ -5,6 +5,7 @@ import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
 import { Subscription } from "@/server/db/models";
 import { writeAudit } from "@/server/audit";
 import { getPlanDefinition } from "@/server/services/planService";
+import { apiError } from "@/server/apiError";
 
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("CHANGE_PACKAGE"), packageCode: z.enum(PACKAGE_CODES) }),
@@ -85,9 +86,6 @@ export async function PATCH(
           : `Pakiet ${packageCode} zacznie obowiązywać od kolejnego okresu.`,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Nie udało się zmienić pakietu." },
-      { status: 400 },
-    );
+    return apiError(error, "Nie udało się zmienić pakietu.");
   }
 }

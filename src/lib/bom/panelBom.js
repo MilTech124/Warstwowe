@@ -12,7 +12,7 @@ import {
   getRoofCladdingModel,
   getWallPanelLengthM,
 } from "@/config/catalog";
-import { roofFootprint, wallTopHeightAt } from "@/scene/geometry";
+import { roofFootprint, wallTopHeightAt } from "@/scene/wallProfile";
 import { isGableRoof, roofMetrics, slopedRoofLength } from "@/scene/roofMath";
 import { getFrontProjectionFinish } from "@/config/frontProjection";
 import { frontProjectionAreas, frontProjectionDepth } from "@/scene/frontProjectionMath";

@@ -4,7 +4,7 @@
 import { useMemo } from "react";
 import { AlertTriangle, Weight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Field, Select } from "@/components/ui/Field";
+import { Field, Select } from "@/components/configurator-ui/Field";
 import { formatKg, formatNumber, profileTable } from "@/lib/projectSummary";
 import { steelBom } from "@/lib/bom/steelBom";
 import { buildStructure } from "@/scene/structure/buildStructure";

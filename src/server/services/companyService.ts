@@ -1,8 +1,19 @@
-import { CLADDING_CATALOG, GATE_MANUFACTURERS, PRESETS } from "@/config/catalog";
+import {
+  CLADDING_CATALOG,
+  DOOR_MODELS,
+  GATE_MANUFACTURERS,
+  GATE_TYPES,
+  PRESETS,
+  ROOF_CLADDING_CATALOG,
+  ROOF_TYPES,
+  WINDOW_MODELS,
+} from "@/config/catalog";
 import { FINISH_PRESETS } from "@/config/materialFinishes";
 import { PACKAGE_DEFINITIONS } from "@/domain/plans";
 import { resolveEntitlements } from "@/domain/entitlements";
+import { getPublishedPriceList } from "@/server/services/priceListService";
 import { connectMongo } from "@/server/db/connection";
+import { getDemoDraftState, getDemoState } from "@/server/demoState";
 import {
   CatalogManufacturer,
   CatalogProduct,
@@ -30,10 +41,27 @@ const DEFAULT_SETTINGS: CompanyConfiguratorSettings = {
   manuallyEnabled: true,
   defaultPresetId: "single_garage",
   allowedPresetIds: Object.keys(PRESETS),
+  allowedRoofTypeIds: Object.keys(ROOF_TYPES),
+  allowedOpeningKinds: ["gate", "door", "window", "roofWindow"],
   allowedWallColorIds: [],
   allowedRoofColorIds: [],
-  allowedPanelManufacturerIds: Object.keys(CLADDING_CATALOG),
+  allowedPanelManufacturerIds: [...new Set([
+    ...Object.keys(CLADDING_CATALOG),
+    ...Object.keys(ROOF_CLADDING_CATALOG),
+  ])],
   allowedGateManufacturerIds: Object.keys(GATE_MANUFACTURERS),
+  allowedWallPanelModelIds: [...new Set(Object.values(CLADDING_CATALOG as Record<string, any>).flatMap((manufacturer: any) =>
+    Object.values(manufacturer.types || {}).flatMap((type: any) => Object.keys(type.models || {})),
+  ))],
+  allowedRoofPanelModelIds: [...new Set(Object.values(ROOF_CLADDING_CATALOG as Record<string, any>).flatMap((manufacturer: any) =>
+    Object.keys(manufacturer.models || {}),
+  ))],
+  allowedGateTypeIds: Object.keys(GATE_TYPES),
+  allowedGateModelIds: [...new Set(Object.values(GATE_MANUFACTURERS as Record<string, any>).flatMap((manufacturer: any) =>
+    Object.values(manufacturer.types || {}).flatMap((type: any) => Object.keys(type.models || {})),
+  ))],
+  allowedDoorModelIds: Object.keys(DOOR_MODELS),
+  allowedWindowModelIds: Object.keys(WINDOW_MODELS),
   disabledFeatures: [],
   orderNotificationEmails: [],
 };
@@ -41,7 +69,10 @@ const DEFAULT_SETTINGS: CompanyConfiguratorSettings = {
 function staticCatalog(): PublicCatalog {
   return {
     version: 1,
-    panelManufacturers: Object.entries(CLADDING_CATALOG as Record<string, any>).map(([key, item]) => ({
+    panelManufacturers: Object.entries({
+      ...(CLADDING_CATALOG as Record<string, any>),
+      ...(ROOF_CLADDING_CATALOG as Record<string, any>),
+    }).map(([key, item]) => ({
       key,
       name: item.label,
       status: "PUBLISHED",
@@ -65,6 +96,38 @@ function staticCatalog(): PublicCatalog {
       roles: item.allowedRoles,
       status: "PUBLISHED",
     })),
+    roofTypes: Object.entries(ROOF_TYPES as Record<string, string>).map(([key, name]) => ({ key, name })),
+    openingKinds: [
+      { key: "gate", name: "Bramy" },
+      { key: "door", name: "Drzwi" },
+      { key: "window", name: "Okna ścienne" },
+      { key: "roofWindow", name: "Okna dachowe" },
+    ],
+    wallPanelModels: [...new Map(Object.values(CLADDING_CATALOG as Record<string, any>).flatMap((manufacturer: any) =>
+      Object.values(manufacturer.types || {}).flatMap((type: any) =>
+        Object.entries(type.models || {}).map(([key, model]: [string, any]) => [key, { key, name: model.label }]),
+      ),
+    )).values()],
+    roofPanelModels: [...new Map(Object.values(ROOF_CLADDING_CATALOG as Record<string, any>).flatMap((manufacturer: any) =>
+      Object.entries(manufacturer.models || {}).map(([key, model]: [string, any]) => [key, { key, name: model.label }]),
+    )).values()],
+    gateTypes: Object.entries(GATE_TYPES as Record<string, string>).map(([key, name]) => ({ key, name })),
+    gateModels: Object.entries(GATE_MANUFACTURERS as Record<string, any>).flatMap(([manufacturerKey, manufacturer]: [string, any]) =>
+      Object.entries(manufacturer.types || {}).flatMap(([typeKey, type]: [string, any]) =>
+        Object.entries(type.models || {}).map(([key, model]: [string, any]) => ({
+          key,
+          name: model.label,
+          manufacturerKey,
+          typeKey,
+        })),
+      ),
+    ),
+    doorModels: Object.entries(DOOR_MODELS as Record<string, any>).map(([key, model]) => ({ key, name: model.label })),
+    windowModels: Object.entries(WINDOW_MODELS as Record<string, any>).map(([key, model]) => ({
+      key,
+      name: model.label,
+      placement: model.placement,
+    })),
   };
 }
 
@@ -72,6 +135,7 @@ export const DEMO_COMPANY_ID = "demo-company";
 
 export function demoBootstrap(): ConfiguratorBootstrap {
   const plan = PACKAGE_DEFINITIONS.DIAMOND;
+  const demoState = getDemoState();
   return {
     company: {
       id: DEMO_COMPANY_ID,
@@ -82,13 +146,15 @@ export function demoBootstrap(): ConfiguratorBootstrap {
         accentColor: "#f59e0b",
         supportEmail: "sprzedaz@example.pl",
         supportPhone: "+48 000 000 000",
+        ...demoState.branding,
       },
     },
     packageCode: "DIAMOND",
     accessActive: true,
     capabilities: { ...plan.features },
+    availableCapabilities: { ...plan.features },
     seatLimit: plan.seatLimit,
-    settings: { ...DEFAULT_SETTINGS },
+    settings: { ...DEFAULT_SETTINGS, ...demoState.settings },
     catalog: staticCatalog(),
   };
 }
@@ -101,6 +167,12 @@ function settingsFromDocument(document: Record<string, unknown> | null): Company
     manuallyEnabled: document.manuallyEnabled !== false,
     defaultPresetId: String(document.defaultPresetId || "single_garage"),
     allowedPresetIds: Array.isArray(document.allowedPresetIds) ? document.allowedPresetIds.map(String) : [],
+    allowedRoofTypeIds: Array.isArray(document.allowedRoofTypeIds) && document.allowedRoofTypeIds.length
+      ? document.allowedRoofTypeIds.map(String)
+      : [...DEFAULT_SETTINGS.allowedRoofTypeIds],
+    allowedOpeningKinds: Array.isArray(document.allowedOpeningKinds) && document.allowedOpeningKinds.length
+      ? document.allowedOpeningKinds.map(String)
+      : [...DEFAULT_SETTINGS.allowedOpeningKinds],
     allowedWallColorIds: Array.isArray(document.allowedWallColorIds) ? document.allowedWallColorIds.map(String) : [],
     allowedRoofColorIds: Array.isArray(document.allowedRoofColorIds) ? document.allowedRoofColorIds.map(String) : [],
     allowedPanelManufacturerIds: Array.isArray(document.allowedPanelManufacturerIds)
@@ -109,6 +181,24 @@ function settingsFromDocument(document: Record<string, unknown> | null): Company
     allowedGateManufacturerIds: Array.isArray(document.allowedGateManufacturerIds)
       ? document.allowedGateManufacturerIds.map(String)
       : [],
+    allowedWallPanelModelIds: Array.isArray(document.allowedWallPanelModelIds) && document.allowedWallPanelModelIds.length
+      ? document.allowedWallPanelModelIds.map(String)
+      : [...DEFAULT_SETTINGS.allowedWallPanelModelIds],
+    allowedRoofPanelModelIds: Array.isArray(document.allowedRoofPanelModelIds) && document.allowedRoofPanelModelIds.length
+      ? document.allowedRoofPanelModelIds.map(String)
+      : [...DEFAULT_SETTINGS.allowedRoofPanelModelIds],
+    allowedGateTypeIds: Array.isArray(document.allowedGateTypeIds) && document.allowedGateTypeIds.length
+      ? document.allowedGateTypeIds.map(String)
+      : [...DEFAULT_SETTINGS.allowedGateTypeIds],
+    allowedGateModelIds: Array.isArray(document.allowedGateModelIds) && document.allowedGateModelIds.length
+      ? document.allowedGateModelIds.map(String)
+      : [...DEFAULT_SETTINGS.allowedGateModelIds],
+    allowedDoorModelIds: Array.isArray(document.allowedDoorModelIds) && document.allowedDoorModelIds.length
+      ? document.allowedDoorModelIds.map(String)
+      : [...DEFAULT_SETTINGS.allowedDoorModelIds],
+    allowedWindowModelIds: Array.isArray(document.allowedWindowModelIds) && document.allowedWindowModelIds.length
+      ? document.allowedWindowModelIds.map(String)
+      : [...DEFAULT_SETTINGS.allowedWindowModelIds],
     disabledFeatures: Array.isArray(document.disabledFeatures)
       ? (document.disabledFeatures as FeatureKey[])
       : [],
@@ -119,6 +209,7 @@ function settingsFromDocument(document: Record<string, unknown> | null): Company
 }
 
 async function dynamicCatalog(): Promise<PublicCatalog> {
+  const configuratorOptions = staticCatalog();
   const [manufacturers, products, presets, finishes] = await Promise.all([
     CatalogManufacturer.find({ status: "PUBLISHED" }).lean(),
     CatalogProduct.find({ status: "PUBLISHED" }).lean(),
@@ -167,11 +258,30 @@ async function dynamicCatalog(): Promise<PublicCatalog> {
       roles: item.roles,
       maps: item.maps,
     })),
+    roofTypes: configuratorOptions.roofTypes,
+    openingKinds: configuratorOptions.openingKinds,
+    wallPanelModels: configuratorOptions.wallPanelModels,
+    roofPanelModels: configuratorOptions.roofPanelModels,
+    gateTypes: configuratorOptions.gateTypes,
+    gateModels: configuratorOptions.gateModels,
+    doorModels: configuratorOptions.doorModels,
+    windowModels: configuratorOptions.windowModels,
   };
 }
 
+/**
+ * The synthetic `/demo` tenant bypasses authentication entirely and serves a
+ * full DIAMOND dashboard, so it must never be reachable in production. Opt-in
+ * only, and never when NODE_ENV is production — previously this was
+ * `DEMO_MODE !== "false"`, which left it on by default everywhere.
+ */
+export function demoModeEnabled() {
+  if (process.env.NODE_ENV === "production") return false;
+  return process.env.DEMO_MODE === "true" || !process.env.MONGODB_URI;
+}
+
 export async function findCompanyBySlug(slug: string) {
-  if (slug === "demo" && (process.env.DEMO_MODE !== "false" || !process.env.MONGODB_URI)) {
+  if (slug === "demo" && demoModeEnabled()) {
     return {
       _id: DEMO_COMPANY_ID,
       slug: "demo",
@@ -211,7 +321,7 @@ export async function findCompanyForUser(clerkUserId: string) {
 }
 
 export async function getConfiguratorBootstrap(slug: string): Promise<ConfiguratorBootstrap | null> {
-  if (slug === "demo" && (process.env.DEMO_MODE !== "false" || !process.env.MONGODB_URI)) {
+  if (slug === "demo" && demoModeEnabled()) {
     return demoBootstrap();
   }
 
@@ -233,12 +343,29 @@ export async function getConfiguratorBootstrap(slug: string): Promise<Configurat
   const packageCode = ((subscription as any)?.packageCode || "STANDARD") as PackageCode;
   const status = ((subscription as any)?.status || "ONBOARDING") as SubscriptionStatus;
   const periodEnd = (subscription as any)?.trialEndsAt || (subscription as any)?.currentPeriodEnd;
+  const graceEndsAt = (subscription as any)?.graceEndsAt;
   const entitlements = resolveEntitlements({
     packageCode,
     subscriptionStatus: status,
     periodEnd,
+    graceEndsAt,
     companySuspended: (company as any).status === "SUSPENDED",
     settings,
+    overrides: (overrides as any[]).map((item) => ({
+      feature: item.feature,
+      mode: item.mode,
+      expiresAt: item.expiresAt,
+    })),
+    planFeatures: (planDocument as any)?.features,
+    seatLimit: (planDocument as any)?.seatLimit,
+  });
+  const availableEntitlements = resolveEntitlements({
+    packageCode,
+    subscriptionStatus: status,
+    periodEnd,
+    graceEndsAt,
+    companySuspended: (company as any).status === "SUSPENDED",
+    settings: { manuallyEnabled: true, disabledFeatures: [] },
     overrides: (overrides as any[]).map((item) => ({
       feature: item.feature,
       mode: item.mode,
@@ -265,13 +392,83 @@ export async function getConfiguratorBootstrap(slug: string): Promise<Configurat
     accessActive: entitlements.accessActive,
     accessMessage: entitlements.accessActive
       ? undefined
-      : status === "PAYMENT_FAILED"
+      : status === "PAYMENT_FAILED" || status === "PAST_DUE"
         ? "Płatność za konfigurator nie została potwierdzona."
         : "Konfigurator jest obecnie nieaktywny.",
     capabilities: entitlements.features,
+    availableCapabilities: availableEntitlements.features,
     seatLimit: entitlements.seatLimit,
     settings,
     catalog,
+    priceList: await customerVisiblePriceList(companyId, entitlements.features.pricing),
+  };
+}
+
+/**
+ * Bramkowanie jest tutaj, a nie w UI: `/api/public/.../bootstrap` jest
+ * nieuwierzytelniony, więc stawki nie mogą opuścić serwera, kiedy firma nie
+ * zdecydowała się pokazywać cen klientom. Zwracamy null, nie pusty obiekt —
+ * sam numer wersji też jest informacją.
+ */
+async function customerVisiblePriceList(companyId: unknown, pricingEnabled: boolean) {
+  if (!pricingEnabled) return null;
+  try {
+    const priceList = await getPublishedPriceList(companyId);
+    if (!priceList || !priceList.showToCustomer) return null;
+    return { version: priceList.version, currency: priceList.currency, rates: priceList.rates };
+  } catch {
+    return null;
+  }
+}
+
+export async function getCompanySettingsEditorBootstrap(
+  slug: string,
+): Promise<ConfiguratorBootstrap | null> {
+  const publishedBootstrap = await getConfiguratorBootstrap(slug);
+  if (!publishedBootstrap) return null;
+
+  if (publishedBootstrap.company.id === DEMO_COMPANY_ID) {
+    const draft = getDemoDraftState();
+    const draftSettings = { ...publishedBootstrap.settings, ...draft.settings };
+    const available = publishedBootstrap.availableCapabilities || publishedBootstrap.capabilities;
+    return {
+      ...publishedBootstrap,
+      company: {
+        ...publishedBootstrap.company,
+        branding: { ...publishedBootstrap.company.branding, ...draft.branding },
+      },
+      settings: draftSettings,
+      accessActive: draftSettings.manuallyEnabled && publishedBootstrap.accessActive,
+      capabilities: Object.fromEntries(Object.entries(available).map(([key, enabled]) => [
+        key,
+        draftSettings.manuallyEnabled && enabled && !draftSettings.disabledFeatures.includes(key as FeatureKey),
+      ])) as ConfiguratorBootstrap["capabilities"],
+    };
+  }
+
+  const document: any = await CompanySettings.findOne({
+    companyId: publishedBootstrap.company.id,
+  }).lean();
+  const draft = document?.draft || {};
+  const draftSettings = {
+    ...publishedBootstrap.settings,
+    ...(draft.settings || {}),
+    version: Number(document?.version || publishedBootstrap.settings.version),
+    published: publishedBootstrap.settings.published,
+  };
+  const available = publishedBootstrap.availableCapabilities || publishedBootstrap.capabilities;
+  return {
+    ...publishedBootstrap,
+    company: {
+      ...publishedBootstrap.company,
+      branding: { ...publishedBootstrap.company.branding, ...(draft.branding || {}) },
+    },
+    settings: draftSettings,
+    accessActive: draftSettings.manuallyEnabled && publishedBootstrap.accessActive,
+    capabilities: Object.fromEntries(Object.entries(available).map(([key, enabled]) => [
+      key,
+      draftSettings.manuallyEnabled && enabled && !draftSettings.disabledFeatures.includes(key as FeatureKey),
+    ])) as ConfiguratorBootstrap["capabilities"],
   };
 }
 

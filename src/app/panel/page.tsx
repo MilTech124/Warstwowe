@@ -6,8 +6,12 @@ import { reconcileLatestCompanyPayment } from "@/server/services/paymentStatusSe
 export const dynamic = "force-dynamic";
 
 export default async function PanelEntryPage() {
+  const localDemoEnabled = process.env.NODE_ENV !== "production" && process.env.DEMO_MODE === "true";
   const identity = await getRequestIdentity();
-  if (!identity.userId) redirect("/logowanie?redirect_url=/panel");
+  if (!identity.userId) {
+    if (localDemoEnabled) redirect("/demo/dashboard");
+    redirect("/logowanie?redirect_url=/panel");
+  }
 
   const company: any = await findCompanyForUser(identity.userId);
   if (company?.slug) {
@@ -18,6 +22,7 @@ export default async function PanelEntryPage() {
     }
     redirect(`/${company.slug}/dashboard`);
   }
+  if (localDemoEnabled) redirect("/demo/dashboard");
   if (identity.isSuperadmin) redirect("/superadmin");
   redirect("/onboarding");
 }

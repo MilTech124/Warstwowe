@@ -1,12 +1,12 @@
 import { PageHeading } from "@/components/dashboard/DashboardBits";
 import { SettingsEditor } from "@/components/dashboard/SettingsEditor";
 import { assertCompanyDashboardRole } from "@/server/services/dashboardService";
-import { getConfiguratorBootstrap } from "@/server/services/companyService";
+import { getCompanySettingsEditorBootstrap } from "@/server/services/companyService";
 
 export default async function SettingsPage({ params }: { params: Promise<{ firma: string }> }) {
   const { firma } = await params;
   await assertCompanyDashboardRole(firma, ["OWNER", "ADMIN"]);
-  const bootstrap = await getConfiguratorBootstrap(firma);
+  const bootstrap = await getCompanySettingsEditorBootstrap(firma);
   if (!bootstrap) return null;
   return (
     <>

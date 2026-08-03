@@ -5,6 +5,7 @@ import { requireSuperadmin } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 import { Company, FeatureOverride, Subscription } from "@/server/db/models";
 import { FEATURE_KEYS, PACKAGE_CODES, SUBSCRIPTION_STATUSES } from "@/types/saas";
+import { apiError } from "@/server/apiError";
 
 const companyPatchSchema = z.object({
   displayName: z.string().trim().min(2).max(120).optional(),
@@ -16,7 +17,19 @@ const companyPatchSchema = z.object({
     trialEndsAt: z.string().datetime().nullable().optional(),
     currentPeriodEnd: z.string().datetime().nullable().optional(),
     cancelAtPeriodEnd: z.boolean().optional(),
-  }).optional(),
+  })
+    // Access is now fail-closed on a missing end date, so an ACTIVE/TRIALING
+    // subscription must always carry one — otherwise this endpoint would just
+    // turn the company's configurator off.
+    .refine(
+      (value) => {
+        if (value.status === "ACTIVE") return value.currentPeriodEnd !== null;
+        if (value.status === "TRIALING") return value.trialEndsAt !== null;
+        return true;
+      },
+      { message: "Aktywna subskrypcja wymaga daty końca okresu." },
+    )
+    .optional(),
   overrides: z.array(z.object({
     feature: z.enum(FEATURE_KEYS),
     mode: z.enum(["FORCE_ENABLE", "FORCE_DISABLE"]),
@@ -93,9 +106,9 @@ export async function PATCH(
     return NextResponse.json({ company, subscription, overrides });
   } catch (error: any) {
     const duplicate = error?.code === 11000;
-    return NextResponse.json(
-      { error: duplicate ? "Ten slug jest już zajęty." : error instanceof Error ? error.message : "Nie udało się zmienić firmy." },
-      { status: 400 },
-    );
+    if (duplicate) {
+      return NextResponse.json({ error: "Ten slug jest już zajęty." }, { status: 409 });
+    }
+    return apiError(error, "Nie udało się zmienić firmy.");
   }
 }

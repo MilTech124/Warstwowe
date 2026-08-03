@@ -159,15 +159,48 @@ export async function retrievePayUTokens(email: string, extCustomerId: string) {
   }>;
 }
 
+/** PayU sends `algorithm=` in the header; a POS configured for SHA-256 used to
+ *  fail every notification because the digest was hardcoded to MD5. */
+const PAYU_SIGNATURE_ALGORITHMS: Record<string, string> = {
+  MD5: "md5",
+  SHA1: "sha1",
+  "SHA-1": "sha1",
+  SHA256: "sha256",
+  "SHA-256": "sha256",
+};
+
+function parseSignatureHeader(signatureHeader: string) {
+  const parts = new Map<string, string>();
+  for (const segment of signatureHeader.split(";")) {
+    const index = segment.indexOf("=");
+    if (index === -1) continue;
+    parts.set(
+      segment.slice(0, index).trim().toLowerCase(),
+      segment.slice(index + 1).trim(),
+    );
+  }
+  return parts;
+}
+
 export function verifyPayUSignature(rawBody: string, signatureHeader: string | null) {
   const secondKey = process.env.PAYU_SECOND_KEY;
   if (!secondKey || !signatureHeader) return false;
-  const signature = signatureHeader
-    .split(";")
-    .map((part) => part.trim().split("="))
-    .find(([key]) => key.toLowerCase() === "signature")?.[1];
+
+  const parts = parseSignatureHeader(signatureHeader);
+  const signature = parts.get("signature");
   if (!signature) return false;
-  const expected = createHash("md5").update(rawBody + secondKey).digest("hex");
+
+  // Absent `algorithm` means MD5, which is PayU's historical default.
+  const declared = (parts.get("algorithm") || "MD5").toUpperCase();
+  const algorithm = PAYU_SIGNATURE_ALGORITHMS[declared];
+  if (!algorithm) return false;
+
+  // Reject notifications signed for a different merchant point of sale.
+  const sender = parts.get("sender");
+  const posId = process.env.PAYU_POS_ID;
+  if (sender && posId && !sender.includes(posId)) return false;
+
+  const expected = createHash(algorithm).update(rawBody + secondKey).digest("hex");
   const expectedBuffer = Buffer.from(expected, "utf8");
   const signatureBuffer = Buffer.from(signature.toLowerCase(), "utf8");
   return expectedBuffer.length === signatureBuffer.length

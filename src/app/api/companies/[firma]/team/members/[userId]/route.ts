@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
 import { CompanyMembership } from "@/server/db/models";
 import { writeAudit } from "@/server/audit";
+import { apiError } from "@/server/apiError";
 
 const roleSchema = z.object({ role: z.enum(["ADMIN", "SALESPERSON"]) });
 
@@ -41,7 +42,7 @@ export async function PATCH(
     });
     return NextResponse.json({ membership: { id: String(membership._id), role } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Nie udało się zmienić roli." }, { status: 400 });
+    return apiError(error, "Nie udało się zmienić roli.");
   }
 }
 
@@ -65,6 +66,6 @@ export async function DELETE(
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Nie udało się usunąć konta." }, { status: 400 });
+    return apiError(error, "Nie udało się usunąć konta.");
   }
 }

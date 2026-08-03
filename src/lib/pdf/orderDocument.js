@@ -1,7 +1,9 @@
 // Definicja dokumentu zamówienia dla pdfmake.
 //
-// Ceny: katalog nie zawiera żadnych stawek, więc dokument NIE liczy wycen —
-// zamiast wymyślonych liczb zostawia rubrykę do ręcznego uzupełnienia.
+// Ceny: dokument NIGDY nie liczy wyceny sam. Przyjmuje gotowy `quote`
+// policzony po stronie serwera z opublikowanego cennika firmy. Bez `quote`
+// (firma bez funkcji `pricing` albo bez cennika) rubryki zostają puste do
+// ręcznego uzupełnienia — dokładnie tak, jak działało to wcześniej.
 
 import { CUTTING_ALLOWANCE } from "@/lib/bom/steelBom";
 import { formatKg, formatM2, formatNumber } from "@/lib/projectSummary";
@@ -25,6 +27,125 @@ export function orderNumberFor(config, date = new Date()) {
     ) % 1000,
   );
   return `KW-${stamp}-${String(seed).padStart(3, "0")}`;
+}
+
+const PLN = new Intl.NumberFormat("pl-PL", {
+  style: "currency",
+  currency: "PLN",
+  minimumFractionDigits: 2,
+});
+
+function formatPln(amount) {
+  return PLN.format(Number(amount) || 0);
+}
+
+/**
+ * Rubryka wyceny. Trzy przypadki: pełna wycena, wycena niepełna (cennik ma
+ * luki — pokazujemy co się da i oznaczamy jako wstępną) oraz brak wyceny.
+ */
+function quoteBox(quote) {
+  if (!quote) {
+    return [
+      { text: "Wycena", style: "miniHeading" },
+      {
+        table: {
+          widths: ["50%", "50%"],
+          body: [
+            [{ text: "Wartość netto", style: "key" }, { text: " ", style: "value" }],
+            [{ text: "VAT", style: "key" }, { text: " ", style: "value" }],
+            [{ text: "Wartość brutto", style: "key" }, { text: " ", style: "value" }],
+            [{ text: "Termin realizacji", style: "key" }, { text: " ", style: "value" }],
+          ],
+        },
+        layout: "kvLayout",
+      },
+      {
+        text: "Rubryki do uzupełnienia — konfigurator nie zawiera cennika.",
+        style: "footnote",
+        margin: [0, 4, 0, 0],
+      },
+    ];
+  }
+
+  const stack = [
+    { text: quote.incomplete ? "Wycena wstępna" : "Wycena", style: "miniHeading" },
+    {
+      table: {
+        widths: ["50%", "50%"],
+        body: [
+          [{ text: "Wartość netto", style: "key" }, { text: formatPln(quote.totalNet), style: "value" }],
+          [
+            { text: `VAT ${quote.vatRatePercent}%`, style: "key" },
+            { text: formatPln(quote.vatAmount), style: "value" },
+          ],
+          [
+            { text: "Wartość brutto", style: "key" },
+            { text: formatPln(quote.totalGross), style: "value", bold: true },
+          ],
+          [{ text: "Termin realizacji", style: "key" }, { text: " ", style: "value" }],
+        ],
+      },
+      layout: "kvLayout",
+    },
+  ];
+
+  if (quote.incomplete) {
+    stack.push({
+      text: "Wycena niepełna — część pozycji nie ma jeszcze stawek w cenniku firmy.",
+      style: "footnote",
+      margin: [0, 4, 0, 0],
+    });
+  }
+  return stack;
+}
+
+/** Szczegółowe zestawienie kosztów, tylko dla kompletnej wyceny. */
+function quoteBreakdown(quote) {
+  const body = [
+    [
+      { text: "Pozycja", style: "tableHeader" },
+      { text: "Ilość", style: "tableHeader", alignment: "right" },
+      { text: "J.m.", style: "tableHeader" },
+      { text: "Cena jedn. netto", style: "tableHeader", alignment: "right" },
+      { text: "Wartość netto", style: "tableHeader", alignment: "right" },
+    ],
+  ];
+
+  for (const group of quote.groups) {
+    body.push([
+      { text: group.label, style: "key", bold: true, colSpan: 4 },
+      {},
+      {},
+      {},
+      { text: formatPln(group.subtotalNet), style: "value", alignment: "right", bold: true },
+    ]);
+    for (const line of group.lines) {
+      body.push([
+        { text: `   ${line.label}`, style: "value" },
+        { text: formatNumber(line.quantity), style: "value", alignment: "right" },
+        { text: line.unit, style: "value" },
+        { text: formatPln(line.unitPriceNet), style: "value", alignment: "right" },
+        { text: formatPln(line.totalNet), style: "value", alignment: "right" },
+      ]);
+    }
+  }
+
+  const total = (label, amount, bold = false) => [
+    { text: label, style: "key", colSpan: 4, bold },
+    {},
+    {},
+    {},
+    { text: formatPln(amount), style: "value", alignment: "right", bold },
+  ];
+  if (quote.marginNet) body.push(total(`Marża ${quote.marginPercent}%`, quote.marginNet));
+  body.push(total("Razem netto", quote.totalNet, true));
+  body.push(total(`VAT ${quote.vatRatePercent}%`, quote.vatAmount));
+  body.push(total("Razem brutto", quote.totalGross, true));
+
+  return {
+    table: { widths: ["40%", "12%", "8%", "20%", "20%"], headerRows: 1, body },
+    layout: "dataLayout",
+  };
 }
 
 function formatDate(date) {
@@ -81,7 +202,7 @@ function dataTable({ headers, rows, widths, alignRight = [] }) {
  * @param {Array}  params.shots        zrzuty z captureViews
  * @param {Date}   [params.date]
  */
-export function buildOrderDocument({ config, summary, shots, date = new Date() }) {
+export function buildOrderDocument({ config, summary, shots, date = new Date(), quote = null }) {
   const orderNo = orderNumberFor(config, date);
   const order = config.order ?? {};
   const heroShot = shots.find((shot) => shot.id === "orbit") ?? shots[0];
@@ -135,22 +256,7 @@ export function buildOrderDocument({ config, summary, shots, date = new Date() }
       { width: 14, text: "" },
       {
         width: "48%",
-        stack: [
-          { text: "Wycena", style: "miniHeading" },
-          {
-            table: {
-              widths: ["50%", "50%"],
-              body: [
-                [{ text: "Wartość netto", style: "key" }, { text: " ", style: "value" }],
-                [{ text: "VAT", style: "key" }, { text: " ", style: "value" }],
-                [{ text: "Wartość brutto", style: "key" }, { text: " ", style: "value" }],
-                [{ text: "Termin realizacji", style: "key" }, { text: " ", style: "value" }],
-              ],
-            },
-            layout: "kvLayout",
-          },
-          { text: "Rubryki do uzupełnienia — konfigurator nie zawiera cennika.", style: "footnote", margin: [0, 4, 0, 0] },
-        ],
+        stack: quoteBox(quote),
       },
     ],
     margin: [0, 0, 0, 8],
@@ -158,37 +264,41 @@ export function buildOrderDocument({ config, summary, shots, date = new Date() }
 
   // ---------------- 2-3. Opis obiektu, dach, wypust ----------------
   content.push({ text: "", pageBreak: "after" });
-  content.push(sectionHeading("1. Opis obiektu"));
+  // Licznik zamiast ręcznych przesunięć — dodanie sekcji nie wymaga
+  // przeliczania wszystkich numerów.
+  let sectionNo = 0;
+  const nextSection = (label) => sectionHeading(`${(sectionNo += 1)}. ${label}`);
+
+  content.push(nextSection("Opis obiektu"));
   content.push(keyValueTable(summary.building.rows));
 
-  content.push(sectionHeading("2. Dach"));
+  content.push(nextSection("Dach"));
   content.push(keyValueTable(summary.roof.rows));
 
   if (summary.frontProjection) {
-    content.push(sectionHeading("3. Wypust frontowy"));
+    content.push(nextSection("Wypust frontowy"));
     content.push(keyValueTable(summary.frontProjection.rows));
   }
 
   // ---------------- 4. Poszycie ----------------
-  const claddingIndex = summary.frontProjection ? 4 : 3;
-  content.push(sectionHeading(`${claddingIndex}. Poszycie ścian`));
+  content.push(nextSection("Poszycie ścian"));
   content.push(keyValueTable(summary.cladding.wallRows));
-  content.push(sectionHeading(`${claddingIndex + 1}. Poszycie dachu`));
+  content.push(nextSection("Poszycie dachu"));
   content.push(keyValueTable(summary.cladding.roofRows));
 
   // ---------------- 5. Obróbki i rynny ----------------
-  content.push(sectionHeading(`${claddingIndex + 2}. Obróbki blacharskie`));
+  content.push(nextSection("Obróbki blacharskie"));
   content.push(keyValueTable(summary.accessorySection.flashingRows));
-  content.push(sectionHeading(`${claddingIndex + 3}. Orynnowanie`));
+  content.push(nextSection("Orynnowanie"));
   content.push(keyValueTable(summary.accessorySection.gutterRows));
 
   // ---------------- 6. Oświetlenie ----------------
-  content.push(sectionHeading(`${claddingIndex + 4}. Oświetlenie`));
+  content.push(nextSection("Oświetlenie"));
   content.push(keyValueTable(summary.lighting.rows));
 
   // ---------------- 7. Otwory ----------------
   content.push({ text: "", pageBreak: "before" });
-  content.push(sectionHeading(`${claddingIndex + 5}. Bramy, drzwi i okna`));
+  content.push(nextSection("Bramy, drzwi i okna"));
   content.push(
     dataTable({
       headers: ["Pozycja", "Ściana", "Wymiar", "Produkt", "Kolor", "Szczegóły"],
@@ -202,8 +312,22 @@ export function buildOrderDocument({ config, summary, shots, date = new Date() }
     margin: [0, 0, 0, 10],
   });
 
-  // ---------------- 8. Konstrukcja ----------------
-  content.push(sectionHeading(`${claddingIndex + 6}. Konstrukcja stalowa`));
+  // ---------------- Zestawienie kosztów ----------------
+  // Tylko dla kompletnej wyceny — niepełna pokazuje się wyłącznie jako
+  // podsumowanie na stronie tytułowej, żeby nie sugerować zamkniętej oferty.
+  if (quote && !quote.incomplete && quote.groups.length) {
+    content.push({ text: "", pageBreak: "before" });
+    content.push(nextSection("Zestawienie kosztów"));
+    content.push(quoteBreakdown(quote));
+    content.push({
+      text: "Ceny netto według cennika firmy. Wycena obowiązuje dla konfiguracji opisanej w tym dokumencie.",
+      style: "footnote",
+      margin: [0, 0, 0, 10],
+    });
+  }
+
+  // ---------------- Konstrukcja ----------------
+  content.push(nextSection("Konstrukcja stalowa"));
   content.push(keyValueTable(summary.structure.rows));
 
   content.push({ text: "Dobór przekrojów", style: "miniHeading" });
@@ -274,7 +398,7 @@ export function buildOrderDocument({ config, summary, shots, date = new Date() }
 
   // ---------------- 8. Uwagi ----------------
   if (summary.warnings.length > 0) {
-    content.push(sectionHeading(`${claddingIndex + 7}. Uwagi do konfiguracji`));
+    content.push(nextSection("Uwagi do konfiguracji"));
     content.push({
       ul: summary.warnings.map((warning) => warning.message),
       style: "warningList",

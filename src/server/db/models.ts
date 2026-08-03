@@ -23,7 +23,10 @@ const brandingSchema = new Schema(
 
 const companySchema = new Schema(
   {
-    ownerClerkUserId: { type: String, required: true, index: true },
+    // Unique: onboarding does a check-then-create without a transaction, so a
+    // double submit could otherwise create two companies for one owner and
+    // findCompanyForUser would then pick one non-deterministically.
+    ownerClerkUserId: { type: String, required: true, unique: true },
     slug: { type: String, required: true, unique: true, lowercase: true, trim: true },
     displayName: { type: String, required: true, trim: true },
     code: { type: String, required: true, trim: true, uppercase: true },
@@ -69,10 +72,18 @@ const companySettingsSchema = new Schema(
     manuallyEnabled: { type: Boolean, default: true },
     defaultPresetId: { type: String, default: "single_garage" },
     allowedPresetIds: { type: [String], default: ["single_garage", "double_garage"] },
+    allowedRoofTypeIds: { type: [String], default: [] },
+    allowedOpeningKinds: { type: [String], default: [] },
     allowedWallColorIds: { type: [String], default: [] },
     allowedRoofColorIds: { type: [String], default: [] },
     allowedPanelManufacturerIds: { type: [String], default: ["default_panels", "steelprofil"] },
     allowedGateManufacturerIds: { type: [String], default: ["wisniowski"] },
+    allowedWallPanelModelIds: { type: [String], default: [] },
+    allowedRoofPanelModelIds: { type: [String], default: [] },
+    allowedGateTypeIds: { type: [String], default: [] },
+    allowedGateModelIds: { type: [String], default: [] },
+    allowedDoorModelIds: { type: [String], default: [] },
+    allowedWindowModelIds: { type: [String], default: [] },
     disabledFeatures: { type: [String], enum: FEATURE_KEYS, default: [] },
     orderNotificationEmails: { type: [String], default: [] },
     draft: { type: Schema.Types.Mixed, default: {} },
@@ -127,9 +138,47 @@ const subscriptionSchema = new Schema(
     cardMask: String,
     cardBrand: String,
     lastPaymentAt: Date,
+    // Dunning: a declined renewal moves the subscription to PAST_DUE and keeps
+    // the configurator running until graceEndsAt while the cron retries.
+    graceEndsAt: Date,
+    dunningAttempt: { type: Number, default: 0 },
+    nextRetryAt: { type: Date, index: true },
   },
   timestamps,
 );
+
+/**
+ * Cennik firmy. Osobno od CompanySettings, bo tabela stawek jest duża
+ * (obciążałaby każdy odczyt bootstrapu konfiguratora), a publikacja cennika to
+ * inny akt niż publikacja ustawień — z własnym licznikiem wersji i audytem.
+ */
+const companyPriceListSchema = new Schema(
+  {
+    companyId: { type: Schema.Types.ObjectId, required: true, unique: true, index: true, ref: "Company" },
+    version: { type: Number, default: 1 },
+    publishedVersion: { type: Number, default: 0 },
+    published: { type: Boolean, default: false },
+    /** Czy klient widzi ceny na żywo w konfiguratorze. */
+    showToCustomer: { type: Boolean, default: false },
+    currency: { type: String, default: "PLN" },
+    draft: { type: Schema.Types.Mixed, default: {} },
+    publishedRates: { type: Schema.Types.Mixed, default: {} },
+  },
+  timestamps,
+);
+
+/** Historia tylko do dopisywania — stare zamówienie zachowuje swoje stawki. */
+const companyPriceListVersionSchema = new Schema(
+  {
+    companyId: { type: Schema.Types.ObjectId, required: true, index: true, ref: "Company" },
+    version: { type: Number, required: true },
+    rates: { type: Schema.Types.Mixed, required: true },
+    currency: { type: String, default: "PLN" },
+    publishedBy: String,
+  },
+  timestamps,
+);
+companyPriceListVersionSchema.index({ companyId: 1, version: 1 }, { unique: true });
 
 const featureOverrideSchema = new Schema(
   {
@@ -162,6 +211,9 @@ const orderSchema = new Schema(
     configurationSnapshot: { type: Schema.Types.Mixed, required: true },
     settingsVersion: { type: Number, required: true },
     catalogVersion: { type: Number, default: 1 },
+    /** Wersja cennika użyta do wyceny i sama wycena — snapshot, nie referencja. */
+    priceListVersion: { type: Number, default: null },
+    quote: { type: Schema.Types.Mixed, default: null },
     pdfBlobPath: String,
     submittedAt: { type: Date, default: Date.now, index: true },
   },
@@ -319,6 +371,10 @@ export const Company = models.Company || model("Company", companySchema);
 export const CompanyMembership =
   models.CompanyMembership || model("CompanyMembership", companyMembershipSchema);
 export const CompanySettings = models.CompanySettings || model("CompanySettings", companySettingsSchema);
+export const CompanyPriceList =
+  models.CompanyPriceList || model("CompanyPriceList", companyPriceListSchema);
+export const CompanyPriceListVersion =
+  models.CompanyPriceListVersion || model("CompanyPriceListVersion", companyPriceListVersionSchema);
 export const Plan = models.Plan || model("Plan", planSchema);
 export const PlanVersion = models.PlanVersion || model("PlanVersion", planVersionSchema);
 export const Subscription = models.Subscription || model("Subscription", subscriptionSchema);

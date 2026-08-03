@@ -60,9 +60,10 @@ import {
 } from "@/config/catalog";
 import { useConfiguratorStore, useConfiguratorStoreApi } from "@/store/configuratorStore";
 import { cn, formatMeters } from "@/lib/utils";
-import { Field, Select, Slider } from "@/components/ui/Field";
+import { Field, Select, Slider } from "@/components/configurator-ui/Field";
 import { StructurePanel } from "@/components/StructurePanel";
 import { OrderPdfFooter } from "@/components/OrderPdfFooter";
+import { PriceSummary } from "@/components/PriceSummary";
 import {
   filterAllowedColors,
   filterAllowedRecord,
@@ -77,6 +78,7 @@ import {
   getFrontProjectionFinish,
   isFrontProjectionAvailable,
 } from "@/config/frontProjection";
+import { filterAllowedOptions, isAllowed } from "@/domain/configuratorAvailability";
 
 const dimensionLabels = {
   widthM: "Szerokość",
@@ -118,6 +120,7 @@ export function ControlPanel() {
   const visibleTabs = tabs.filter((tab) => {
     if (tab.id === "lighting") return access.capabilities.lighting;
     if (tab.id === "structure") return access.capabilities.structureView;
+    if (tab.id === "flashings") return access.capabilities.flashings;
     return true;
   });
 
@@ -189,7 +192,7 @@ export function ControlPanel() {
           <PanelSection title="Geometria dachu" icon={ArrowUpRight}>
             <Field label="Typ dachu">
               <Select value={config.roof.type} onChange={(event) => updateRoof({ type: event.target.value })}>
-                {Object.entries(ROOF_TYPES).map(([key, label]) => (
+                {Object.entries(filterAllowedOptions(ROOF_TYPES, access.settings, "allowedRoofTypeIds")).map(([key, label]) => (
                   <option key={key} value={key}>{label}</option>
                 ))}
               </Select>
@@ -218,7 +221,7 @@ export function ControlPanel() {
                 />
               ))}
             </div>
-            <GuttersPanel config={config} updateGutters={updateGutters} />
+            {access.capabilities.gutters && <GuttersPanel config={config} updateGutters={updateGutters} />}
           </PanelSection>
         )}
 
@@ -269,6 +272,7 @@ export function ControlPanel() {
         )}
       </div>
 
+      <PriceSummary />
       <OrderPdfFooter />
     </aside>
   );
@@ -541,6 +545,7 @@ function ToggleRow({ label, description, checked, onChange, disabled = false }) 
 }
 
 function OpeningsPanel({ config, updateOpening, addOpening, duplicateOpening, removeOpening }) {
+  const access = useConfiguratorAccess();
   const storeApi = useConfiguratorStoreApi();
   const [selectedId, setSelectedId] = useState(config.openings[0]?.id || null);
   const selected = config.openings.find((opening) => opening.id === selectedId) || config.openings[0];
@@ -565,22 +570,22 @@ function OpeningsPanel({ config, updateOpening, addOpening, duplicateOpening, re
   return (
     <div className="openings-manager">
       <div className="opening-add-grid">
-        <button type="button" onClick={() => addAndSelect("gate")}>
+        {isAllowed(access.settings, "allowedOpeningKinds", "gate") && <button type="button" onClick={() => addAndSelect("gate")}>
           <Plus className="h-4 w-4" />
           <span>Brama</span>
-        </button>
-        <button type="button" onClick={() => addAndSelect("door")}>
+        </button>}
+        {isAllowed(access.settings, "allowedOpeningKinds", "door") && <button type="button" onClick={() => addAndSelect("door")}>
           <DoorOpen className="h-4 w-4" />
           <span>Drzwi</span>
-        </button>
-        <button type="button" onClick={() => addAndSelect("window")}>
+        </button>}
+        {isAllowed(access.settings, "allowedOpeningKinds", "window") && <button type="button" onClick={() => addAndSelect("window")}>
           <Grid2X2Plus className="h-4 w-4" />
           <span>Okno</span>
-        </button>
-        <button type="button" onClick={() => addAndSelect("roofWindow")}>
+        </button>}
+        {isAllowed(access.settings, "allowedOpeningKinds", "roofWindow") && <button type="button" onClick={() => addAndSelect("roofWindow")}>
           <ArrowUpRight className="h-4 w-4" />
           <span>Dachowe</span>
-        </button>
+        </button>}
       </div>
 
       {config.openings.length > 0 && (
@@ -647,6 +652,7 @@ function OpeningsPanel({ config, updateOpening, addOpening, duplicateOpening, re
 
 function DoorFlow({ opening, updateOpening, cladding }) {
   const [colorModalOpen, setColorModalOpen] = useState(false);
+  const access = useConfiguratorAccess();
   const model = getDoorModel(opening);
   const color = model.matchCladding ? getCladdingColor(cladding) : getDoorColor(opening);
 
@@ -689,7 +695,7 @@ function DoorFlow({ opening, updateOpening, cladding }) {
         }}
       />
       <div className="opening-model-grid">
-        {Object.entries(DOOR_MODELS).map(([key, item]) => (
+        {Object.entries(filterAllowedOptions(DOOR_MODELS, access.settings, "allowedDoorModelIds")).map(([key, item]) => (
           <button key={key} className={cn(opening.model === key && "active")} type="button" onClick={() => selectModel(key)}>
             <strong>{item.label}</strong>
             <small>{item.note}</small>
@@ -724,8 +730,10 @@ function WindowFlow({ opening, updateOpening }) {
   const requestedMode = opening.openMode || (opening.open ? "turn" : "closed");
   const openMode = model.openModes.includes(requestedMode) ? requestedMode : "closed";
   const roofPlacement = opening.kind === "roofWindow";
-  const availableModels = Object.entries(WINDOW_MODELS).filter(([, item]) =>
-    roofPlacement ? item.placement === "roof" : item.placement !== "roof",
+  const access = useConfiguratorAccess();
+  const availableModels = Object.entries(WINDOW_MODELS).filter(([key, item]) =>
+    isAllowed(access.settings, "allowedWindowModelIds", key)
+      && (roofPlacement ? item.placement === "roof" : item.placement !== "roof"),
   );
 
   const selectModel = (modelKey) => {
@@ -844,9 +852,13 @@ function GateFlow({ opening, updateOpening }) {
   const model = getGateModel(opening);
   const color = getGateColor(opening);
   const availableColors = getGateAvailableColors(opening);
-  const visibleGateManufacturers = filterAllowedRecord(
-    GATE_MANUFACTURERS,
-    access.settings.allowedGateManufacturerIds,
+  const gateTypesWithModels = (gateManufacturer) => Object.fromEntries(
+    Object.entries(filterAllowedOptions(gateManufacturer.types, access.settings, "allowedGateTypeIds"))
+      .filter(([, gateType]) => Object.keys(filterAllowedOptions(gateType.models, access.settings, "allowedGateModelIds")).length > 0),
+  );
+  const visibleGateManufacturers = Object.fromEntries(
+    Object.entries(filterAllowedRecord(GATE_MANUFACTURERS, access.settings.allowedGateManufacturerIds))
+      .filter(([, gateManufacturer]) => Object.keys(gateTypesWithModels(gateManufacturer)).length > 0),
   );
 
   const compatibleColor = (nextModel, structure, preferredColor) => {
@@ -856,10 +868,30 @@ function GateFlow({ opening, updateOpening }) {
       : allowedKeys.find((key) => nextModel.colors[key]) || Object.keys(nextModel.colors)[0];
   };
 
+  const applyManufacturer = (manufacturerKey) => {
+    const nextManufacturer = GATE_MANUFACTURERS[manufacturerKey];
+    const nextTypes = gateTypesWithModels(nextManufacturer);
+    const gateType = Object.keys(nextTypes)[0];
+    const nextModels = filterAllowedOptions(nextTypes[gateType].models, access.settings, "allowedGateModelIds");
+    const modelKey = Object.keys(nextModels)[0];
+    const nextModel = nextModels[modelKey];
+    const structure = nextModel.defaultStructure || nextModel.structures?.[0] || "silkline";
+    updateOpening(opening.id, {
+      manufacturer: manufacturerKey,
+      gateType,
+      model: modelKey,
+      pattern: nextModel.defaultPattern || "smooth",
+      structure,
+      layout: nextModel.defaultLayout || "vertical",
+      color: compatibleColor(nextModel, structure, opening.color),
+    });
+  };
+
   const applyType = (gateType) => {
     const nextType = manufacturer.types[gateType];
-    const nextModelKey = Object.keys(nextType.models)[0];
-    const nextModel = nextType.models[nextModelKey];
+    const nextModels = filterAllowedOptions(nextType.models, access.settings, "allowedGateModelIds");
+    const nextModelKey = Object.keys(nextModels)[0];
+    const nextModel = nextModels[nextModelKey];
     const nextStructure = nextModel.defaultStructure || nextModel.structures?.[0] || "silkline";
     updateOpening(opening.id, {
       gateType,
@@ -894,13 +926,13 @@ function GateFlow({ opening, updateOpening }) {
         label: item.label,
         meta: "Producent bram",
         active: opening.manufacturer === key,
-        onSelect: () => updateOpening(opening.id, { manufacturer: key }),
+        onSelect: () => applyManufacturer(key),
       })),
     },
     {
       id: "gateType",
       label: "Typ bramy",
-      options: Object.entries(manufacturer.types).map(([key, item]) => ({
+      options: Object.entries(gateTypesWithModels(manufacturer)).map(([key, item]) => ({
         key,
         label: item.label,
         meta: "Rodzaj konstrukcji",
@@ -911,7 +943,7 @@ function GateFlow({ opening, updateOpening }) {
     {
       id: "model",
       label: "Model",
-      options: Object.entries(type.models).map(([key, item]) => ({
+      options: Object.entries(filterAllowedOptions(type.models, access.settings, "allowedGateModelIds")).map(([key, item]) => ({
         key,
         label: item.label,
         meta: item.note || "Model bramy",
@@ -1075,7 +1107,7 @@ function RoofCladdingFlow({ cladding, updateCladding }) {
     {
       id: "roofModel",
       label: "Model dachu",
-      options: Object.entries(manufacturer.models).map(([key, item]) => ({
+      options: Object.entries(filterAllowedOptions(manufacturer.models, access.settings, "allowedRoofPanelModelIds")).map(([key, item]) => ({
         key,
         label: item.label,
         meta: "Plyta warstwowa na dach",
@@ -1212,7 +1244,7 @@ function CladdingFlow({ selection, appliedSelection, onChange, onColorChange, on
       id: "model",
       label: "Model",
       value: model.label,
-      options: Object.entries(type.models).map(([key, item]) => ({
+      options: Object.entries(filterAllowedOptions(type.models, access.settings, "allowedWallPanelModelIds")).map(([key, item]) => ({
         key,
         label: item.label,
         meta: "Przetloczenie plyty sciennej",

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSuperadmin } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 import { CatalogManufacturer, CatalogProduct } from "@/server/db/models";
+import { apiError } from "@/server/apiError";
 
 const catalogSchema = z.discriminatedUnion("entity", [
   z.object({
@@ -56,9 +57,9 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ document });
   } catch (error: any) {
-    return NextResponse.json(
-      { error: error?.code === 11000 ? "Taki klucz katalogowy już istnieje." : error instanceof Error ? error.message : "Nie udało się zapisać katalogu." },
-      { status: 400 },
-    );
+    if (error?.code === 11000) {
+      return NextResponse.json({ error: "Taki klucz katalogowy już istnieje." }, { status: 409 });
+    }
+    return apiError(error, "Nie udało się zapisać katalogu.");
   }
 }

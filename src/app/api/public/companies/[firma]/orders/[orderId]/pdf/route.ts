@@ -18,6 +18,11 @@ export async function POST(
     if (!bootstrap?.accessActive || !bootstrap.capabilities.orderPdf) {
       return NextResponse.json({ error: "PDF jest dostępny tylko w aktywnym pakiecie Diamond." }, { status: 403 });
     }
+    // Demo orders are intentionally ephemeral. The browser has already
+    // downloaded the generated document, so no database or Blob write is needed.
+    if (bootstrap.company.id === "demo-company") {
+      return NextResponse.json({ stored: false, demo: true });
+    }
     if (!process.env.BLOB_READ_WRITE_TOKEN || !(await connectMongo())) {
       return NextResponse.json({ error: "Prywatny Vercel Blob nie jest skonfigurowany." }, { status: 503 });
     }

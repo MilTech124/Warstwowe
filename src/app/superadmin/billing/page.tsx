@@ -28,7 +28,7 @@ export default async function SystemBillingPage() {
         <SuperadminMetric label="Wszystkie płatności" value={data.stats.payments} detail="Zarejestrowane transakcje" icon={CreditCard} />
         <SuperadminMetric label="Błędy odnowień" value={data.failedAttempts.length} detail={data.failedAttempts.length ? "Wymagają interwencji" : "Brak aktywnych błędów"} icon={AlertCircle} tone={data.failedAttempts.length ? "danger" : "positive"} />
         <SuperadminMetric label="Ostatnie webhooki" value={data.recentWebhooks.length} detail="Zapisane zdarzenia PayU" icon={Webhook} />
-        <SuperadminMetric label="Harmonogram" value="5 min" detail="Interwał Vercel Cron" icon={RefreshCw} tone="positive" />
+        <SuperadminMetric label="Harmonogram" value="03:00" detail="Vercel Cron, codziennie" icon={RefreshCw} tone="positive" />
       </section>
 
       <div className="sa-billing-grid">
@@ -56,7 +56,7 @@ export default async function SystemBillingPage() {
           <SuperadminSectionHeader eyebrow="Automatyzacja" title="Stan procesów" icon={Radio} />
           <div className="sa-process-list">
             <div><span><i className="is-good" /> PayU Webhook</span><strong>Nasłuchuje</strong><small>Ostatnie zdarzenia: {data.recentWebhooks.length}</small></div>
-            <div><span><i className="is-good" /> Cron odnowień</span><strong>Aktywny</strong><small>Interwał: co 5 minut</small></div>
+            <div><span><i className="is-good" /> Cron odnowień</span><strong>Aktywny</strong><small>Codziennie o 03:00 UTC</small></div>
             <div><span><i className={data.failedAttempts.length ? "is-bad" : "is-good"} /> Próby obciążeń</span><strong>{data.failedAttempts.length ? "Uwaga" : "Stabilnie"}</strong><small>{data.failedAttempts.length} błędów w kolejce</small></div>
           </div>
         </section>

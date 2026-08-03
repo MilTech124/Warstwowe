@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { FEATURE_KEYS } from "@/types/saas";
-import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
+import {
+  AuthError,
+  getRequestIdentity,
+  requireCompanyMember,
+  requireCompanyWriteIntent,
+} from "@/server/auth";
 import { Company, CompanySettings } from "@/server/db/models";
-import { getConfiguratorBootstrap } from "@/server/services/companyService";
+import { demoModeEnabled, getConfiguratorBootstrap } from "@/server/services/companyService";
 import { writeAudit } from "@/server/audit";
+import { saveDemoState } from "@/server/demoState";
+import { apiError } from "@/server/apiError";
 
 const settingsSchema = z.object({
   branding: z.object({
@@ -20,10 +27,18 @@ const settingsSchema = z.object({
     manuallyEnabled: z.boolean(),
     defaultPresetId: z.string().min(1),
     allowedPresetIds: z.array(z.string()).min(1),
+    allowedRoofTypeIds: z.array(z.string()).min(1),
+    allowedOpeningKinds: z.array(z.enum(["gate", "door", "window", "roofWindow"])).min(1),
     allowedWallColorIds: z.array(z.string()),
     allowedRoofColorIds: z.array(z.string()),
     allowedPanelManufacturerIds: z.array(z.string()).min(1),
     allowedGateManufacturerIds: z.array(z.string()).min(1),
+    allowedWallPanelModelIds: z.array(z.string()).min(1),
+    allowedRoofPanelModelIds: z.array(z.string()).min(1),
+    allowedGateTypeIds: z.array(z.string()).min(1),
+    allowedGateModelIds: z.array(z.string()).min(1),
+    allowedDoorModelIds: z.array(z.string()).min(1),
+    allowedWindowModelIds: z.array(z.string()).min(1),
     disabledFeatures: z.array(z.enum(FEATURE_KEYS)),
     orderNotificationEmails: z.array(z.string().email()),
     published: z.boolean().optional(),
@@ -37,8 +52,6 @@ export async function PUT(
 ) {
   try {
     const { firma } = await params;
-    const access = await requireCompanyMember(firma, ["OWNER", "ADMIN"]);
-    requireCompanyWriteIntent(request, access);
     const input = settingsSchema.parse(await request.json());
     const bootstrap = await getConfiguratorBootstrap(firma);
     if (!bootstrap) throw new Error("Firma nie istnieje.");
@@ -50,11 +63,49 @@ export async function PUT(
     if (!input.settings.allowedPresetIds.includes(input.settings.defaultPresetId)) {
       throw new Error("Preset domyślny musi być włączony.");
     }
-    if ((access as any).company?.demo || bootstrap.company.id === "demo-company") {
+    const validateCatalogSelection = (
+      selected: string[],
+      entries: Array<Record<string, unknown>>,
+      label: string,
+    ) => {
+      const allowed = new Set(entries.map((item) => String(item.key)));
+      if (selected.some((key) => !allowed.has(key))) {
+        throw new Error(`Wybrano niedostępną opcję: ${label}.`);
+      }
+    };
+    validateCatalogSelection(input.settings.allowedRoofTypeIds, bootstrap.catalog.roofTypes, "typ dachu");
+    validateCatalogSelection(input.settings.allowedOpeningKinds, bootstrap.catalog.openingKinds, "rodzaj otworu");
+    validateCatalogSelection(input.settings.allowedPanelManufacturerIds, bootstrap.catalog.panelManufacturers, "producent płyt");
+    validateCatalogSelection(input.settings.allowedGateManufacturerIds, bootstrap.catalog.gateManufacturers, "producent bram");
+    validateCatalogSelection(input.settings.allowedWallPanelModelIds, bootstrap.catalog.wallPanelModels, "model płyty ściennej");
+    validateCatalogSelection(input.settings.allowedRoofPanelModelIds, bootstrap.catalog.roofPanelModels, "model płyty dachowej");
+    validateCatalogSelection(input.settings.allowedGateTypeIds, bootstrap.catalog.gateTypes, "typ bramy");
+    validateCatalogSelection(input.settings.allowedGateModelIds, bootstrap.catalog.gateModels, "model bramy");
+    validateCatalogSelection(input.settings.allowedDoorModelIds, bootstrap.catalog.doorModels, "model drzwi");
+    validateCatalogSelection(input.settings.allowedWindowModelIds, bootstrap.catalog.windowModels, "model okna");
+    if (input.settings.allowedOpeningKinds.includes("gate")) {
+      const gateModels = bootstrap.catalog.gateModels as Array<Record<string, unknown>>;
+      const missingType = input.settings.allowedGateTypeIds.find((typeKey) =>
+        !gateModels.some((model) => String(model.typeKey) === typeKey && input.settings.allowedGateModelIds.includes(String(model.key))),
+      );
+      if (missingType) throw new Error("Każdy typ bramy musi mieć co najmniej jeden dostępny model.");
+    }
+    // The demo tenant has no membership records, so it cannot go through
+    // requireCompanyMember — but it must still not accept anonymous writes.
+    // `demoModeEnabled()` already rules production out.
+    if (bootstrap.company.id === "demo-company" && demoModeEnabled()) {
+      const identity = await getRequestIdentity();
+      if (!identity.userId) {
+        throw new AuthError("AUTH_REQUIRED", 401, "Zaloguj się, aby zmienić ustawienia demo.");
+      }
+      const demoState = saveDemoState(input);
       return NextResponse.json({
-        settings: { ...input.settings, version: input.settings.version + 1, published: input.publish },
+        settings: demoState.settings,
       });
     }
+
+    const access = await requireCompanyMember(firma, ["OWNER", "ADMIN"]);
+    requireCompanyWriteIntent(request, access);
 
     const companyId = (access as any).company._id;
     const before = await CompanySettings.findOne({ companyId }).lean();
@@ -108,9 +159,6 @@ export async function PUT(
       },
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Nie udało się zapisać ustawień." },
-      { status: 400 },
-    );
+    return apiError(error, "Nie udało się zapisać ustawień.");
   }
 }
