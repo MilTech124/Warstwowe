@@ -9,7 +9,15 @@ import {
   createInitialConfiguratorConfig,
 } from "@/store/configuratorStore";
 
-export default function App({ bootstrap, previewOnly = false }) {
+/**
+ * @param {{
+ *   bootstrap: any,
+ *   previewOnly?: boolean,
+ *   initialOrder?: Record<string, unknown> | null,
+ *   children?: import("react").ReactNode,
+ * }} props
+ */
+export default function App({ bootstrap, previewOnly = false, initialOrder = null, children = null }) {
   const branding = bootstrap?.company?.branding;
   const initialConfig = bootstrap?.initialConfiguration
     ? createConfigurationFromSnapshot(
@@ -23,12 +31,17 @@ export default function App({ bootstrap, previewOnly = false }) {
         bootstrap?.settings,
         bootstrap?.capabilities,
       );
+  const hydratedConfig = initialOrder
+    ? { ...initialConfig, order: { ...initialConfig.order, ...initialOrder } }
+    : initialConfig;
+
   return (
     <ConfiguratorProvider bootstrap={bootstrap}>
       <ConfiguratorStoreProvider
-        initialConfig={initialConfig}
+        initialConfig={hydratedConfig}
         availability={{ settings: bootstrap?.settings, capabilities: bootstrap?.capabilities }}
       >
+        {children}
         <main
           className={`app-shell ${previewOnly ? "preview-only" : ""}`}
           style={{

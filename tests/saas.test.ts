@@ -3,6 +3,8 @@ import test from "node:test";
 import { companyInvitationClaimFilter, normalizeCompanyEmail } from "../src/domain/companyMembership";
 import { resolveEntitlements } from "../src/domain/entitlements";
 import { PACKAGE_DEFINITIONS, packagePriceGross } from "../src/domain/plans";
+import { orderPdfGenerationAvailable, orderPdfUploadError } from "../src/domain/orderPdf";
+import { companyWriteIntentAllowed } from "../src/domain/companyWriteIntent";
 
 const activeInput = {
   subscriptionStatus: "ACTIVE" as const,
@@ -129,4 +131,28 @@ test("firma może wyłączyć cennik, a superadmin włączyć go poza pakietem",
     overrides: [{ feature: "pricing", mode: "FORCE_ENABLE" }],
   });
   assert.equal(forced.features.pricing, true);
+});
+
+test("generator PDF jest dostępny tylko dla aktywnej firmy z odpowiednią funkcją", () => {
+  assert.equal(orderPdfGenerationAvailable({ accessActive: true, capability: true }), true);
+  assert.equal(orderPdfGenerationAvailable({ accessActive: false, capability: true }), false);
+  assert.equal(orderPdfGenerationAvailable({ accessActive: true, capability: false }), false);
+  assert.equal(orderPdfGenerationAvailable({ accessActive: true, capability: true, readOnly: true }), false);
+  assert.equal(orderPdfGenerationAvailable({ accessActive: true, capability: true, demo: true }), false);
+});
+
+test("upload PDF odrzuca zły format i plik większy niż 20 MB", () => {
+  assert.equal(orderPdfUploadError(null), "Oczekiwano pliku PDF.");
+  assert.equal(orderPdfUploadError({ type: "text/plain", size: 100 }), "Oczekiwano pliku PDF.");
+  assert.equal(
+    orderPdfUploadError({ type: "application/pdf", size: 20 * 1024 * 1024 + 1 }),
+    "PDF przekracza limit 20 MB.",
+  );
+  assert.equal(orderPdfUploadError({ type: "application/pdf", size: 1024 }), null);
+});
+
+test("superadmin nie może zapisać PDF bez jawnego trybu zapisu", () => {
+  assert.equal(companyWriteIntentAllowed(true, null), false);
+  assert.equal(companyWriteIntentAllowed(true, "confirmed"), true);
+  assert.equal(companyWriteIntentAllowed(false, null), true);
 });

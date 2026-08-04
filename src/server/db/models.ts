@@ -197,7 +197,6 @@ const orderSchema = new Schema(
   {
     companyId: { type: Schema.Types.ObjectId, required: true, index: true, ref: "Company" },
     number: { type: String, required: true },
-    publicTokenHash: { type: String, required: true, select: false },
     status: { type: String, enum: ORDER_STATUSES, default: "NEW", index: true },
     customer: {
       name: { type: String, required: true },
@@ -289,6 +288,9 @@ const catalogManufacturerSchema = new Schema(
     name: { type: String, required: true },
     logoUrl: String,
     websiteUrl: String,
+    // Jednolinijkowy opis marki pokazywany klientowi przy wyborze produktu.
+    tagline: String,
+    description: String,
     status: { type: String, enum: ["DRAFT", "PUBLISHED", "ARCHIVED"], default: "DRAFT", index: true },
     version: { type: Number, default: 1 },
     metadata: Schema.Types.Mixed,
@@ -312,6 +314,15 @@ const catalogProductSchema = new Schema(
     renderKind: String,
     modelUrl: String,
     animationProfile: { type: String, enum: ["NONE", "SECTIONAL", "ROLLER", "TILTING"], default: "NONE" },
+    // Parametry z karty technicznej producenta. `uValues` to wartości badane —
+    // mają pierwszeństwo przed U wyliczonym z lambdy.
+    specs: {
+      coreType: String,
+      lambdaWmK: Number,
+      uValues: [{ _id: false, thicknessMm: Number, uWm2K: Number }],
+      fireClass: String,
+      datasheetUrl: String,
+    },
     metadata: Schema.Types.Mixed,
   },
   timestamps,

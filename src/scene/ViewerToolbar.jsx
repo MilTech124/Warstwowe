@@ -1,22 +1,11 @@
-import { Box, Camera, Eye, Grid2X2, Home, Maximize2, Ruler, Square, Warehouse } from "lucide-react";
-import { CAMERA_MODES } from "@/config/catalog";
+import { Eye, Grid2X2, Ruler } from "lucide-react";
 import { useConfiguratorStore } from "@/store/configuratorStore";
 import { useConfiguratorAccess } from "@/configurator/ConfiguratorContext";
-
-const cameraIcons = {
-  orbit: Maximize2,
-  front: Home,
-  side: Square,
-  top: Box,
-  interior: Camera,
-  structure: Warehouse,
-};
 
 export function ViewerToolbar() {
   const access = useConfiguratorAccess();
   const config = useConfiguratorStore((state) => state.config);
   const setViewMode = useConfiguratorStore((state) => state.setViewMode);
-  const setCameraMode = useConfiguratorStore((state) => state.setCameraMode);
   const setShowDimensions = useConfiguratorStore((state) => state.setShowDimensions);
 
   return (
@@ -32,19 +21,6 @@ export function ViewerToolbar() {
             <span>Konstrukcja</span>
           </button>
         )}
-      </div>
-
-      <div className="viewer-tool-group camera-tools">
-        {Object.entries(CAMERA_MODES)
-          .filter(([key]) => key !== "structure" || access.capabilities.structureView)
-          .map(([key, label]) => {
-          const Icon = cameraIcons[key] || Camera;
-          return (
-            <button key={key} className={config.cameraMode === key ? "viewer-tool icon-only active" : "viewer-tool icon-only"} onClick={() => setCameraMode(key)} title={`Kamera: ${label}`}>
-              <Icon className="h-4 w-4" />
-            </button>
-          );
-        })}
       </div>
 
       <button className={config.showDimensions ? "viewer-tool active" : "viewer-tool"} onClick={() => setShowDimensions(!config.showDimensions)} title="Pokaż lub ukryj wymiary">

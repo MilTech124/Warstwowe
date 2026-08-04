@@ -62,7 +62,7 @@ import { useConfiguratorStore, useConfiguratorStoreApi } from "@/store/configura
 import { cn, formatMeters } from "@/lib/utils";
 import { Field, Select, Slider } from "@/components/configurator-ui/Field";
 import { StructurePanel } from "@/components/StructurePanel";
-import { OrderPdfFooter } from "@/components/OrderPdfFooter";
+import { OrderFooter } from "@/components/OrderFooter";
 import { PriceSummary } from "@/components/PriceSummary";
 import {
   filterAllowedColors,
@@ -79,6 +79,8 @@ import {
   isFrontProjectionAvailable,
 } from "@/config/frontProjection";
 import { filterAllowedOptions, isAllowed } from "@/domain/configuratorAvailability";
+import { formatU, manufacturerPresentation, productSpecs, uValueFor } from "@/domain/catalogPresentation";
+import { ManufacturerLogo, ManufacturerSpecCard } from "@/components/ManufacturerSpecCard";
 
 const dimensionLabels = {
   widthM: "Szerokość",
@@ -141,12 +143,7 @@ export function ControlPanel() {
               <h1>Konfigurator garażu</h1>
             </div>
           </div>
-          <div className="panel-online-state">
-            <span className="panel-status-dot" aria-hidden="true" />
-            <span>Online</span>
-          </div>
         </div>
-        <p className="panel-intro">Dopasuj obiekt krok po kroku. Podgląd 3D aktualizuje się automatycznie.</p>
       </div>
 
       <nav className="config-tabs" aria-label="Kategorie konfiguracji">
@@ -273,7 +270,7 @@ export function ControlPanel() {
       </div>
 
       <PriceSummary />
-      <OrderPdfFooter />
+      <OrderFooter />
     </aside>
   );
 }
@@ -860,6 +857,14 @@ function GateFlow({ opening, updateOpening }) {
     Object.entries(filterAllowedRecord(GATE_MANUFACTURERS, access.settings.allowedGateManufacturerIds))
       .filter(([, gateManufacturer]) => Object.keys(gateTypesWithModels(gateManufacturer)).length > 0),
   );
+  const presentation = manufacturerPresentation(access.catalog, "GATE", opening.manufacturer);
+  const specs = productSpecs(access.catalog, {
+    kind: "GATE",
+    manufacturerKey: opening.manufacturer,
+    modelKey: opening.model,
+  });
+  // Panel bramy ma własną grubość — U liczymy dla niej, nie dla płyty ściennej.
+  const gatePanelThicknessMm = model.panelThicknessM ? Math.round(model.panelThicknessM * 1000) : null;
 
   const compatibleColor = (nextModel, structure, preferredColor) => {
     const allowedKeys = nextModel.structureColors?.[structure] || Object.keys(nextModel.colors);
@@ -921,13 +926,17 @@ function GateFlow({ opening, updateOpening }) {
     {
       id: "manufacturer",
       label: "Producent",
-      options: Object.entries(visibleGateManufacturers).map(([key, item]) => ({
-        key,
-        label: item.label,
-        meta: "Producent bram",
-        active: opening.manufacturer === key,
-        onSelect: () => applyManufacturer(key),
-      })),
+      options: Object.entries(visibleGateManufacturers).map(([key, item]) => {
+        const brand = manufacturerPresentation(access.catalog, "GATE", key);
+        return {
+          key,
+          label: brand?.name || item.label,
+          meta: brand?.tagline || "Producent bram",
+          brand,
+          active: opening.manufacturer === key,
+          onSelect: () => applyManufacturer(key),
+        };
+      }),
     },
     {
       id: "gateType",
@@ -1030,6 +1039,7 @@ function GateFlow({ opening, updateOpening }) {
         >
           {currentStep.options.map((option) => (
             <button key={option.key} className={cn("cladding-option", option.image && "gate-pattern-option", option.active && "active")} onClick={() => selectOption(option)} type="button">
+              {option.brand && <ManufacturerLogo presentation={option.brand} />}
               {option.image && (
                 <img className="gate-pattern-thumb" src={option.image} alt={option.label} loading="lazy" />
               )}
@@ -1041,6 +1051,9 @@ function GateFlow({ opening, updateOpening }) {
             </button>
           ))}
         </div>
+        {currentStep.id !== "manufacturer" && (
+          <ManufacturerSpecCard presentation={presentation} specs={specs} thicknessMm={gatePanelThicknessMm} />
+        )}
         <div className="cladding-actions">
           <button className="cladding-secondary" type="button" onClick={() => setActiveStep((step) => Math.max(0, step - 1))} disabled={safeStep === 0}>
             <ArrowLeft className="h-4 w-4" />
@@ -1075,6 +1088,12 @@ function RoofCladdingFlow({ cladding, updateCladding }) {
     ROOF_CLADDING_CATALOG,
     access.settings.allowedPanelManufacturerIds,
   );
+  const presentation = manufacturerPresentation(access.catalog, "ROOF_PANEL", cladding.roofManufacturer);
+  const specs = productSpecs(access.catalog, {
+    kind: "ROOF_PANEL",
+    manufacturerKey: cladding.roofManufacturer,
+    modelKey: cladding.roofModel,
+  });
 
   const updateRoofDraft = (patch) => {
     const next = { ...cladding, ...patch };
@@ -1096,13 +1115,17 @@ function RoofCladdingFlow({ cladding, updateCladding }) {
     {
       id: "roofManufacturer",
       label: "Producent dachu",
-      options: Object.entries(visibleRoofManufacturers).map(([key, item]) => ({
-        key,
-        label: item.label,
-        meta: "Dostawca plyty dachowej",
-        active: cladding.roofManufacturer === key,
-        onSelect: () => updateRoofDraft({ roofManufacturer: key }),
-      })),
+      options: Object.entries(visibleRoofManufacturers).map(([key, item]) => {
+        const brand = manufacturerPresentation(access.catalog, "ROOF_PANEL", key);
+        return {
+          key,
+          label: brand?.name || item.label,
+          meta: brand?.tagline || "Dostawca plyty dachowej",
+          brand,
+          active: cladding.roofManufacturer === key,
+          onSelect: () => updateRoofDraft({ roofManufacturer: key }),
+        };
+      }),
     },
     {
       id: "roofModel",
@@ -1118,13 +1141,16 @@ function RoofCladdingFlow({ cladding, updateCladding }) {
     {
       id: "roofThickness",
       label: "Grubosc dachu",
-      options: model.thicknessMm.map((value) => ({
-        key: String(value),
-        label: `${value} mm`,
-        meta: value === 80 ? "Domyslna grubosc dachu" : "Wariant grubosci",
-        active: cladding.roofThicknessMm === value,
-        onSelect: () => updateRoofDraft({ roofThicknessMm: value }),
-      })),
+      options: model.thicknessMm.map((value) => {
+        const uValue = uValueFor(specs, value);
+        return {
+          key: String(value),
+          label: `${value} mm`,
+          meta: uValue ? `U = ${formatU(uValue)}` : value === 80 ? "Domyslna grubosc dachu" : "Wariant grubosci",
+          active: cladding.roofThicknessMm === value,
+          onSelect: () => updateRoofDraft({ roofThicknessMm: value }),
+        };
+      }),
     },
   ];
 
@@ -1168,6 +1194,7 @@ function RoofCladdingFlow({ cladding, updateCladding }) {
         <div className="cladding-option-list compact">
           {currentStep.options.map((option) => (
             <button key={option.key} className={cn("cladding-option", option.active && "active")} onClick={() => selectOption(option)} type="button">
+              {option.brand && <ManufacturerLogo presentation={option.brand} />}
               <span className="cladding-option-copy">
                 <strong>{option.label}</strong>
                 <small>{option.meta}</small>
@@ -1176,6 +1203,9 @@ function RoofCladdingFlow({ cladding, updateCladding }) {
             </button>
           ))}
         </div>
+        {currentStep.id !== "roofManufacturer" && (
+          <ManufacturerSpecCard presentation={presentation} specs={specs} thicknessMm={cladding.roofThicknessMm} />
+        )}
         <div className="cladding-actions">
           <button className="cladding-secondary" type="button" onClick={() => setActiveStep((step) => Math.max(0, step - 1))} disabled={activeStep === 0}>
             <ArrowLeft className="h-4 w-4" />
@@ -1205,6 +1235,12 @@ function CladdingFlow({ selection, appliedSelection, onChange, onColorChange, on
     CLADDING_CATALOG,
     access.settings.allowedPanelManufacturerIds,
   );
+  const presentation = manufacturerPresentation(access.catalog, "WALL_PANEL", selection.manufacturer);
+  const specs = productSpecs(access.catalog, {
+    kind: "WALL_PANEL",
+    manufacturerKey: selection.manufacturer,
+    modelKey: selection.model,
+  });
 
   const updateDraft = (patch) => {
     const next = { ...selection, ...patch };
@@ -1232,13 +1268,17 @@ function CladdingFlow({ selection, appliedSelection, onChange, onColorChange, on
       id: "manufacturer",
       label: "Producent",
       value: manufacturer.label,
-      options: Object.entries(visiblePanelManufacturers).map(([key, item]) => ({
-        key,
-        label: item.label,
-        meta: "Dostawca systemu plyt",
-        active: selection.manufacturer === key,
-        onSelect: () => updateDraft({ manufacturer: key }),
-      })),
+      options: Object.entries(visiblePanelManufacturers).map(([key, item]) => {
+        const brand = manufacturerPresentation(access.catalog, "WALL_PANEL", key);
+        return {
+          key,
+          label: brand?.name || item.label,
+          meta: brand?.tagline || "Dostawca systemu plyt",
+          brand,
+          active: selection.manufacturer === key,
+          onSelect: () => updateDraft({ manufacturer: key }),
+        };
+      }),
     },
     {
       id: "model",
@@ -1257,13 +1297,17 @@ function CladdingFlow({ selection, appliedSelection, onChange, onColorChange, on
       id: "thickness",
       label: "Grubosc",
       value: `${selection.thicknessMm} mm`,
-      options: model.thicknessMm.map((value) => ({
-        key: String(value),
-        label: `${value} mm`,
-        meta: value === 60 ? "Domyslna plyta scienna" : "Wariant grubosci",
-        active: selection.thicknessMm === value,
-        onSelect: () => updateDraft({ thicknessMm: value }),
-      })),
+      options: model.thicknessMm.map((value) => {
+        const uValue = uValueFor(specs, value);
+        return {
+          key: String(value),
+          label: `${value} mm`,
+          // Klient widzi skutek wyboru grubości w chwili wyboru, a nie dopiero w ofercie.
+          meta: uValue ? `U = ${formatU(uValue)}` : value === 60 ? "Domyslna plyta scienna" : "Wariant grubosci",
+          active: selection.thicknessMm === value,
+          onSelect: () => updateDraft({ thicknessMm: value }),
+        };
+      }),
     },
     {
       id: "panelLength",
@@ -1324,6 +1368,7 @@ function CladdingFlow({ selection, appliedSelection, onChange, onColorChange, on
               onClick={() => selectOption(option)}
               type="button"
             >
+              {option.brand && <ManufacturerLogo presentation={option.brand} />}
               {option.previewProfile && (
                 <span className={cn("cladding-profile-thumb", "profile-preview", `profile-${option.previewProfile}`)} aria-hidden="true">
                   <span className="profile-light" />
@@ -1338,6 +1383,10 @@ function CladdingFlow({ selection, appliedSelection, onChange, onColorChange, on
             </button>
           ))}
         </div>
+
+        {currentStep.id !== "manufacturer" && (
+          <ManufacturerSpecCard presentation={presentation} specs={specs} thicknessMm={selection.thicknessMm} />
+        )}
 
         <div className="cladding-actions">
           <button className="cladding-secondary" type="button" onClick={goBack} disabled={activeStep === 0}>

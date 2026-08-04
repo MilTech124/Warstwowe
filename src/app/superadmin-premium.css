@@ -1820,6 +1820,24 @@
   background: #edf2f7;
 }
 
+.sa-catalog-logo {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #fff;
+}
+
+.sa-catalog-upload input[type="file"] {
+  font-size: 12px;
+}
+
+.sa-catalog-upload > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .sa-payment-id {
   display: flex;
   align-items: center;

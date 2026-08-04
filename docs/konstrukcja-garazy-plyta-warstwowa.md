@@ -26,8 +26,8 @@ nie zastępuje projektu wykonawczego.
 | Słupy narożne | Główne podpory, zwykle o oczko większy profil niż słupy pośrednie |
 | Słupy pośrednie | Podparcie płyt ściennych; rozstaw ograniczony rozpiętością płyty |
 | Podwalina (profil startowy) | Dolny rygiel po obwodzie, oparcie pierwszego pasa płyt; przerwana w świetle bram i drzwi |
-| Oczep / rygiel górny | Górny rygiel wieńczący ściany; na ścianach skośnych podąża za linią spadu |
-| Krokwie | Belki wzdłuż spadu, przenoszą dach na ściany; na ścianach szczytowych rolę skrajnych krokwi pełni raked oczep |
+| Rygiel górny | Górny rygiel wieńczący ściany; na ścianach skośnych podąża za linią spadu |
+| Krokwie | Belki wzdłuż spadu, przenoszą dach na ściany; na ścianach szczytowych rolę skrajnych krokwi pełni rygiel górny skośny |
 | Płatwie | Belki prostopadłe do spadu, bezpośrednie podparcie płyt dachowych |
 | Kalenica | Belka podłużna pod stykiem krokwi w dwuspadzie |
 | Jętki | Poziome ściągi par krokwi w szerszych dwuspadach (rozpiętość ≥ ~4,5 m) |
@@ -35,7 +35,7 @@ nie zastępuje projektu wykonawczego.
 | Nadproże + słupki przybramowe | Wzmocniona rama otworu bramowego |
 | Rygiel podokienny | Dolny rygiel podramy okna; oparcie dociętej płyty i słupka podokiennego |
 | Słupek podokienny / nadprożowy | Odcinki słupa przerwanego otworem, oparte na podramie |
-| Zastrzały narożne | Krótkie ukośniki słup–oczep usztywniające szkielet |
+| Zastrzały narożne | Krótkie ukośniki słup–rygiel górny usztywniające szkielet |
 | Rygiel pośredni ścian | Dodatkowy poziomy rygiel przy ścianach wyższych niż ~3 m |
 
 Sztywność małego garażu zapewniają: spawane węzły ram, zastrzały narożne oraz tarcza
@@ -108,7 +108,7 @@ ostrzeżenie `section_capacity` zamiast po cichu przyjąć zbyt słaby przekrój
 | Krokiew | rozpiętość > 7,0 m | 120×60×4 |
 | Płatew | rozpiętość ≤ 3,5 m | 40×40×2 |
 | Płatew | rozpiętość > 3,5 m | 60×40×2 |
-| Podwalina / oczep | jak słup pośredni (spójny system) | 60×60×2 → 80×80×3 |
+| Podwalina / rygiel górny | jak słup pośredni (spójny system) | 60×60×2 → 80×80×3 |
 | Nadproże bramy | zawsze wzmocnione | ≥ 80×80×3 |
 | Jętka / zastrzał | — | 40×40×2 / 50×50×2 |
 
@@ -177,15 +177,15 @@ Ten sam model zasila scenę 3D, zestawienie stali i rysunki wektorowe w PDF.
   krata krokwi × płatwi. W dwuspadzie pierwsza płatew idzie tuż przy kalenicy — inaczej
   górna krawędź płyty wisi bez podparcia między krokwiami.
 
-  **Oczep skośny ≠ krokiew.** Dwie skrajne linie połaci leżą na ścianach biegnących wzdłuż
+  **Rygiel górny skośny ≠ krokiew.** Dwie skrajne linie połaci leżą na ścianach biegnących wzdłuż
   spadu, czyli NA słupach co ~1,2–1,8 m. Ich rozpiętość to rozstaw słupów, więc dostają
-  profil oczepu (`rakedTopRail`). Tylko krokiew pośrednia rozpina się swobodnie między
+  profil rygla górnego (`rakedTopRail`). Tylko krokiew pośrednia rozpina się swobodnie między
   ścianami szczytowymi i wymaga przekroju z tabeli krokwi. Dobieranie profilu skrajnej
   linii z pełnej długości ściany dawało w garażu 3,5 m RHS 100×60×3 na 5,7 m tam, gdzie
   realna rozpiętość wynosi 1,15 m — to była **największa pojedyncza pozycja masy**.
 
   **Krokwi pośrednich może nie być wcale.** Lekka płatew przenosi ~3,5 m, więc dopóki
-  budynek jest węższy, płatwie leżą wprost na obu oczepach skośnych. Krokiew dochodzi
+  budynek jest węższy, płatwie leżą wprost na obu ryglach górnych skośnych. Krokiew dochodzi
   dopiero wtedy, gdy rozpiętość płatwi przekroczyłaby jej nośność (garaż 3,5 m → 0 krokwi,
   6 m → 1, 7 m → 2).
 
@@ -193,7 +193,7 @@ Ten sam model zasila scenę 3D, zestawienie stali i rysunki wektorowe w PDF.
   płyty kotwiona jest PODWALINA (co ~1 m); słupki pośrednie są w nią wspawane i nie mają
   własnych stóp. Stopa z 4 kotwami pod każdym słupkiem dawała 56 kotew w garażu 3,5 × 6 m.
 
-  **Podwalina, oczep i rygiel pośredni są CIĄGŁE.** Słupy są do nich przyspawane, więc
+  **Podwalina, rygiel górny i rygiel pośredni są CIĄGŁE.** Słupy są do nich przyspawane, więc
   przerywają je tylko otwory sięgające posadzki. Przycinanie przy każdym słupie dawało
   kilkanaście krótkich odcinków (w tym 20-centymetrowe skrawki), czego nikt nie spawa
   i co zaśmiecało zestawienie stali. W halach rygiel i podwalina są przerywane wyłącznie

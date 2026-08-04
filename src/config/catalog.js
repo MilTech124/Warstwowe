@@ -87,6 +87,14 @@ export function getWallPanelLengthM(selection) {
     : WALL_PANEL_DIMENSIONS.preferredTransportLengthM;
 }
 
+// Parametry cieplne rdzenia. Producent może je nadpisać w katalogu (Mongo) —
+// tutaj trzymamy wartości katalogowe PIR, żeby konfigurator zawsze miał czym
+// opisać wybraną płytę, nawet gdy baza jest pusta.
+const PIR_CORE_SPECS = {
+  coreType: "PIR",
+  lambdaWmK: 0.022,
+};
+
 const DEFAULT_WALL_PANEL_TYPES = {
   wall_panel: {
     label: "Plyta scienna",
@@ -97,6 +105,7 @@ const DEFAULT_WALL_PANEL_TYPES = {
         profiles: ["linear"],
         thicknessMm: [40, 50, 60, 80, 100, 120],
         colors: WALL_FINISH_OPTIONS,
+        specs: PIR_CORE_SPECS,
       },
       smooth: {
         label: "Gladka",
@@ -104,6 +113,7 @@ const DEFAULT_WALL_PANEL_TYPES = {
         profiles: ["smooth"],
         thicknessMm: [40, 50, 60, 80, 100, 120],
         colors: WALL_FINISH_OPTIONS,
+        specs: PIR_CORE_SPECS,
       },
       macro_linear: {
         label: "Macro linear",
@@ -111,6 +121,7 @@ const DEFAULT_WALL_PANEL_TYPES = {
         profiles: ["macro_linear"],
         thicknessMm: [40, 50, 60, 80, 100, 120],
         colors: WALL_FINISH_OPTIONS,
+        specs: PIR_CORE_SPECS,
       },
       micro_linear: {
         label: "Micro linear",
@@ -118,6 +129,7 @@ const DEFAULT_WALL_PANEL_TYPES = {
         profiles: ["micro_linear"],
         thicknessMm: [40, 50, 60, 80, 100, 120],
         colors: WALL_FINISH_OPTIONS,
+        specs: PIR_CORE_SPECS,
       },
       micro_wave: {
         label: "Micro wave",
@@ -125,6 +137,7 @@ const DEFAULT_WALL_PANEL_TYPES = {
         profiles: ["micro_wave"],
         thicknessMm: [40, 50, 60, 80, 100, 120],
         colors: WALL_FINISH_OPTIONS,
+        specs: PIR_CORE_SPECS,
       },
     },
   },
@@ -133,10 +146,12 @@ const DEFAULT_WALL_PANEL_TYPES = {
 export const CLADDING_CATALOG = {
   default_panels: {
     label: "Plyty domyslne",
+    tagline: "Bazowy system plyt PIR",
     types: DEFAULT_WALL_PANEL_TYPES,
   },
   steelprofil: {
     label: "SteelProfil",
+    tagline: "Plyty warstwowe z rdzeniem PIR",
     types: DEFAULT_WALL_PANEL_TYPES,
   },
 };
@@ -156,16 +171,19 @@ const ROOF_PANEL_MODELS = {
     label: "PIR Dachowa",
     thicknessMm: [60, 80, 100, 120],
     colors: ROOF_FINISH_OPTIONS,
+    specs: PIR_CORE_SPECS,
   },
 };
 
 export const ROOF_CLADDING_CATALOG = {
   default_roof_panels: {
     label: "Plyty domyslne",
+    tagline: "Bazowa plyta dachowa PIR",
     models: ROOF_PANEL_MODELS,
   },
   steelprofil: {
     label: "SteelProfil",
+    tagline: "Plyty dachowe z rdzeniem PIR",
     models: ROOF_PANEL_MODELS,
   },
 };
@@ -508,6 +526,7 @@ const TILTING_MODELS = {
 export const GATE_MANUFACTURERS = {
   wisniowski: {
     label: "WIŚNIOWSKI",
+    tagline: "Bramy segmentowe, roletowe i uchylne",
     types: {
       sectional: { label: GATE_TYPES.sectional, models: SECTIONAL_MODELS },
       roller: { label: GATE_TYPES.roller, models: ROLLER_MODELS },

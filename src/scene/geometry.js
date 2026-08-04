@@ -1,6 +1,7 @@
 import { MathUtils, Quaternion, Vector3 } from "three";
 import { isGableRoof, roofMetrics, roofPitchBounds, slopedRoofLength } from "@/scene/roofMath";
 import { effectiveFrontOverhangM } from "@/scene/frontProjectionMath";
+import { roofFootprint, wallTopHeightAt } from "@/scene/wallProfile";
 
 // Czysta geometria dachu żyje w roofMath.js (bez three), żeby mógł jej używać
 // model konstrukcji. Re-eksport dla modułów, które importują to z geometry.js.
@@ -11,7 +12,7 @@ export { getStructureClass } from "@/scene/structure/classes";
 
 // Obrys dachu i profil ścian nie potrzebują three — mieszkają w wallProfile.js,
 // żeby zestawienie materiałowe dało się policzyć po stronie serwera.
-export { roofFootprint, wallTopHeightAt } from "@/scene/wallProfile";
+export { roofFootprint, wallTopHeightAt };
 
 // Transformacja otworu dachowego do lokalnego układu połaci dachu.
 // Środek otworu = (0,0,0), X = wzdłuż okna, Y = w górę połaci, Z = normala na zewnątrz.

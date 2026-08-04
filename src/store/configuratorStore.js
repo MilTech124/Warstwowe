@@ -46,7 +46,7 @@ const defaultConfig = {
   dimensions: { ...PRESETS.single_garage.dimensions },
   viewMode: "full",
   cameraMode: "orbit",
-  showDimensions: true,
+  showDimensions: false,
   roof: defaultPreset.roof,
   cladding: defaultPreset.cladding,
   flashings: defaultPreset.flashings,

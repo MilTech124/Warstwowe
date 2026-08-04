@@ -81,6 +81,8 @@ export function panelBom(config) {
 
   return {
     wall: {
+      manufacturerKey: config.cladding.manufacturer,
+      modelKey: config.cladding.model,
       manufacturerLabel: getCladdingManufacturer(config.cladding).label,
       modelLabel: getCladdingModel(config.cladding).label,
       profileLabel: getCladdingProfile(config.cladding).label,
@@ -95,6 +97,8 @@ export function panelBom(config) {
       rowCount: Math.max(...walls.map((entry) => entry.rowCount)),
     },
     roof: {
+      manufacturerKey: config.cladding.roofManufacturer,
+      modelKey: config.cladding.roofModel,
       manufacturerLabel: getRoofCladdingManufacturer(config.cladding).label,
       modelLabel: getRoofCladdingModel(config.cladding).label,
       colorLabel: getRoofCladdingColor(config.cladding).label,

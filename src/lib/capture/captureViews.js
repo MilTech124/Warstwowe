@@ -91,9 +91,8 @@ export async function captureViews({
   setQualityOverride,
   onProgress,
 }) {
-  if (!captureBridge.ready()) {
-    throw new Error("Scena 3D nie jest gotowa. Poczekaj na wczytanie modelu i spróbuj ponownie.");
-  }
+  const initialReady = await waitForScene();
+  if (!initialReady) throw new Error("Nie udało się przygotować sceny 3D do wykonania zrzutów.");
 
   // Canvas o domyślnym rozmiarze 300×150 oznacza, że podglądu nigdy nie zmierzono
   // (ukryta karta lub zerowy kontener) — zrzuty wyszłyby puste albo zniekształcone.

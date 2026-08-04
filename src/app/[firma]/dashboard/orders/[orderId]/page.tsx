@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { ArrowLeft, Box, Clock3, Eye, FileText, Mail, MapPin, Phone, UserRound } from "lucide-react";
+import { ArrowLeft, Clock3, Eye, FileDown, FileText, Mail, MapPin, Phone, RefreshCw, UserRound } from "lucide-react";
 import { notFound } from "next/navigation";
 import { EmptyState, PageHeading, StatusBadge } from "@/components/dashboard/DashboardBits";
 import { OrderManager } from "@/components/dashboard/OrderManager";
 import { OrderConfigurationDetails } from "@/components/dashboard/OrderConfigurationDetails";
 import { getCompanyOrder, getCompanyTeam } from "@/server/services/dashboardService";
+import { getConfiguratorBootstrap } from "@/server/services/companyService";
+import { orderPdfGenerationAvailable } from "@/domain/orderPdf";
 import { QuoteIncompleteBadge, QuoteTable } from "@/components/dashboard/QuoteTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,9 +53,19 @@ export default async function OrderDetailsPage({
   params: Promise<{ firma: string; orderId: string }>;
 }) {
   const { firma, orderId } = await params;
-  const [data, team] = await Promise.all([getCompanyOrder(firma, orderId), getCompanyTeam(firma)]);
+  const [data, team, bootstrap] = await Promise.all([
+    getCompanyOrder(firma, orderId),
+    getCompanyTeam(firma),
+    getConfiguratorBootstrap(firma),
+  ]);
   if (!data) notFound();
   const order = data.order as any;
+  const canGeneratePdf = orderPdfGenerationAvailable({
+    readOnly: data.readOnly,
+    demo: bootstrap?.company.id === "demo-company",
+    accessActive: Boolean(bootstrap?.accessActive),
+    capability: Boolean(bootstrap?.capabilities.orderPdf),
+  });
 
   return (
     <>
@@ -67,7 +79,26 @@ export default async function OrderDetailsPage({
         eyebrow="Zamówienie"
         title={order.number}
         description={`Przesłano ${formatDate(order.submittedAt)}`}
-        actions={<StatusBadge status={order.status} />}
+        actions={(
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <StatusBadge status={order.status} />
+            {order.pdfBlobPath && (
+              <Button asChild variant="outline" size="sm">
+                <a href={`/api/companies/${firma}/orders/${orderId}/pdf`}>
+                  <FileDown size={15} /> Pobierz PDF
+                </a>
+              </Button>
+            )}
+            {canGeneratePdf && (
+              <Button asChild size="sm">
+                <Link href={`/${firma}/dashboard/orders/${orderId}/preview?generatePdf=1`}>
+                  {order.pdfBlobPath ? <RefreshCw size={15} /> : <FileText size={15} />}
+                  {order.pdfBlobPath ? "Wygeneruj ponownie" : "Generuj PDF"}
+                </Link>
+              </Button>
+            )}
+          </div>
+        )}
       />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -205,13 +236,6 @@ export default async function OrderDetailsPage({
             </CardContent>
           </Card>
 
-          {order.pdfBlobPath && (
-            <Button asChild variant="outline" className="w-fit">
-              <a href={`/api/companies/${firma}/orders/${orderId}/pdf`}>
-                <FileText size={15} /> Pobierz PDF zamówienia
-              </a>
-            </Button>
-          )}
         </div>
 
         {data.readOnly ? (

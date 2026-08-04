@@ -56,7 +56,7 @@ export function splitAroundOpenings(start, end, openings, level, clearance = 0.1
   return start <= end ? segments : segments.map(([a, b]) => [b, a]);
 }
 
-// Rygle, podwaliny, oczepy i płatwie są wspawane MIĘDZY elementy poprzeczne
+// Rygle, podwaliny i płatwie są wspawane MIĘDZY elementy poprzeczne
 // (słupy, krokwie), a nie przenikają przez nie — tniemy je na odcinki
 // z przerwą na każdy element nośny.
 export function splitAtMembers(start, end, members, minLength = 0.1) {

@@ -20,6 +20,7 @@ import {
   getWindowModel,
 } from "@/config/catalog";
 import { getFrontProjectionFinish } from "@/config/frontProjection";
+import { manufacturerPresentation, productSpecs, specRows } from "@/domain/catalogPresentation";
 import { LIGHTING_LABELS } from "@/config/lighting";
 import { roleLabel } from "@/config/steelProfiles";
 import { openingTitle, openingWallLabel } from "@/lib/openingLabels";
@@ -51,7 +52,7 @@ export function formatNumber(value, digits = 2) {
  * Pełny obraz projektu: model konstrukcji, zestawienia i gotowe do wydruku
  * sekcje opisowe.
  */
-export function projectSummary(config) {
+export function projectSummary(config, options = {}) {
   const inputs = structureInputs(config);
   const model = buildStructure(inputs);
   const panels = panelBom(config);
@@ -68,7 +69,7 @@ export function projectSummary(config) {
     building: buildingSection(config, panels),
     roof: roofSection(config, panels),
     frontProjection: frontProjectionSection(config, panels),
-    cladding: claddingSection(panels),
+    cladding: claddingSection(panels, options.catalog),
     accessorySection: accessorySection(accessories),
     lighting: lightingSection(config),
     openings: openingRows(config),
@@ -144,12 +145,26 @@ function frontProjectionSection(config, panels) {
   };
 }
 
-function claddingSection(panels) {
+function claddingSection(panels, catalog) {
   const { wall, roof } = panels;
+  const wallSpecs = productSpecs(catalog, {
+    kind: "WALL_PANEL",
+    manufacturerKey: wall.manufacturerKey,
+    modelKey: wall.modelKey,
+  });
+  const roofSpecs = productSpecs(catalog, {
+    kind: "ROOF_PANEL",
+    manufacturerKey: roof.manufacturerKey,
+    modelKey: roof.modelKey,
+  });
+
   return {
     title: "Poszycie",
+    wallLogoUrl: manufacturerPresentation(catalog, "WALL_PANEL", wall.manufacturerKey)?.logoUrl || "",
+    roofLogoUrl: manufacturerPresentation(catalog, "ROOF_PANEL", roof.manufacturerKey)?.logoUrl || "",
     wallRows: [
       ["Producent / model", `${wall.manufacturerLabel} — ${wall.modelLabel}`],
+      ...specRows(wallSpecs, wall.thicknessMm),
       ["Profil płyty", wall.profileLabel],
       ["Grubość rdzenia PIR", `${wall.thicknessMm} mm`],
       ["Kolor", wall.colorLabel],
@@ -161,6 +176,7 @@ function claddingSection(panels) {
     ],
     roofRows: [
       ["Producent / model", `${roof.manufacturerLabel} — ${roof.modelLabel}`],
+      ...specRows(roofSpecs, roof.thicknessMm),
       ["Grubość rdzenia PIR", `${roof.thicknessMm} mm`],
       ["Kolor", roof.colorLabel],
       ["Układ płyt", "wzdłuż spadu (żebra prowadzą wodę)"],
@@ -309,7 +325,7 @@ export function profileTable(spec, usedRolesFromModel) {
 
   // Pokazujemy wyłącznie role, które FAKTYCZNIE wystąpiły w modelu. Inaczej
   // tabela obiecywała np. krokiew 100×60×3 w garażu, w którym płatwie leżą wprost
-  // na oczepach i żadnej krokwi nie ma.
+  // na ryglach górnych i żadnej krokwi nie ma.
   const usedRoles = usedRoleSet(spec, usedRolesFromModel);
 
   const seen = new Set();

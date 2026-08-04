@@ -15,7 +15,7 @@ const GROUND_Y = 0.12;
 
 function DimensionLabel({ position, text }) {
   return (
-    <Html position={position} center distanceFactor={5} zIndexRange={[50, 0]} prepend>
+    <Html position={position} center distanceFactor={5} zIndexRange={[50, 0]} prepend occlude>
       <div className="dimension-label-3d">{text}</div>
     </Html>
   );

@@ -66,22 +66,67 @@ const DEFAULT_SETTINGS: CompanyConfiguratorSettings = {
   orderNotificationEmails: [],
 };
 
+/**
+ * Produkty producenta w kształcie, jakiego oczekuje `catalogPresentation`:
+ * ten sam zestaw pól niezależnie od tego, czy dane pochodzą z konfiguracji
+ * statycznej, czy z kolekcji `CatalogProduct`.
+ */
+function staticProducts(manufacturer: any, kind: string) {
+  const models: Record<string, any> = manufacturer?.models
+    ? manufacturer.models
+    : Object.values(manufacturer?.types ?? {}).reduce(
+        (all: Record<string, any>, type: any) => ({ ...all, ...(type.models ?? {}) }),
+        {},
+      );
+
+  return Object.entries(models).map(([key, model]: [string, any]) => ({
+    kind,
+    key,
+    name: model.label,
+    thicknessMm: model.thicknessMm ?? [],
+    specs: model.specs ?? null,
+  }));
+}
+
+function staticManufacturerEntry(key: string, item: any, kind: string, products: any[]) {
+  return {
+    key,
+    name: item.label,
+    logoUrl: item.logoUrl ?? "",
+    websiteUrl: item.websiteUrl ?? "",
+    tagline: item.tagline ?? "",
+    description: item.description ?? "",
+    kind,
+    products,
+    status: "PUBLISHED",
+  };
+}
+
+function staticPanelManufacturers() {
+  const merged = new Map<string, any>();
+
+  for (const [key, item] of Object.entries(CLADDING_CATALOG as Record<string, any>)) {
+    merged.set(key, staticManufacturerEntry(key, item, "PANEL", staticProducts(item, "WALL_PANEL")));
+  }
+  // „steelprofil" dostarcza i płyty ścienne, i dachowe — jeden producent,
+  // dwie listy produktów, więc scalamy zamiast nadpisywać.
+  for (const [key, item] of Object.entries(ROOF_CLADDING_CATALOG as Record<string, any>)) {
+    const roofProducts = staticProducts(item, "ROOF_PANEL");
+    const existing = merged.get(key);
+    if (existing) existing.products = [...existing.products, ...roofProducts];
+    else merged.set(key, staticManufacturerEntry(key, item, "PANEL", roofProducts));
+  }
+
+  return [...merged.values()];
+}
+
 function staticCatalog(): PublicCatalog {
   return {
     version: 1,
-    panelManufacturers: Object.entries({
-      ...(CLADDING_CATALOG as Record<string, any>),
-      ...(ROOF_CLADDING_CATALOG as Record<string, any>),
-    }).map(([key, item]) => ({
-      key,
-      name: item.label,
-      status: "PUBLISHED",
-    })),
-    gateManufacturers: Object.entries(GATE_MANUFACTURERS as Record<string, any>).map(([key, item]) => ({
-      key,
-      name: item.label,
-      status: "PUBLISHED",
-    })),
+    panelManufacturers: staticPanelManufacturers(),
+    gateManufacturers: Object.entries(GATE_MANUFACTURERS as Record<string, any>).map(([key, item]) =>
+      staticManufacturerEntry(key, item, "GATE", staticProducts(item, "GATE")),
+    ),
     presets: Object.entries(PRESETS as Record<string, any>).map(([key, item]) => ({
       key,
       name: item.label,
@@ -208,6 +253,34 @@ function settingsFromDocument(document: Record<string, unknown> | null): Company
   };
 }
 
+/**
+ * Producent z bazy razem z jego produktami. Logo, opis marki i parametry
+ * techniczne muszą dojechać do klienta — to za ich ekspozycję płaci producent.
+ */
+function publicManufacturer(item: any, products: any[]) {
+  return {
+    key: item.key,
+    name: item.name,
+    logoUrl: item.logoUrl ?? "",
+    websiteUrl: item.websiteUrl ?? "",
+    tagline: item.tagline ?? "",
+    description: item.description ?? "",
+    kind: item.kind,
+    products: products
+      .filter((product: any) => product.manufacturerKey === item.key)
+      .map((product: any) => ({
+        kind: product.kind,
+        key: product.key,
+        name: product.name,
+        thicknessMm: product.thicknessMm ?? [],
+        lengthOptionsM: product.lengthOptionsM ?? [],
+        colorIds: product.colorIds ?? [],
+        profile: product.profile ?? "",
+        specs: product.specs ?? null,
+      })),
+  };
+}
+
 async function dynamicCatalog(): Promise<PublicCatalog> {
   const configuratorOptions = staticCatalog();
   const [manufacturers, products, presets, finishes] = await Promise.all([
@@ -230,20 +303,10 @@ async function dynamicCatalog(): Promise<PublicCatalog> {
     version: latestVersion,
     panelManufacturers: manufacturers
       .filter((item: any) => item.kind === "PANEL")
-      .map((item: any) => ({
-        key: item.key,
-        name: item.name,
-        logoUrl: item.logoUrl,
-        products: products.filter((product: any) => product.manufacturerKey === item.key),
-      })),
+      .map((item: any) => publicManufacturer(item, products)),
     gateManufacturers: manufacturers
       .filter((item: any) => item.kind === "GATE")
-      .map((item: any) => ({
-        key: item.key,
-        name: item.name,
-        logoUrl: item.logoUrl,
-        products: products.filter((product: any) => product.manufacturerKey === item.key),
-      })),
+      .map((item: any) => publicManufacturer(item, products)),
     presets: presets.map((item: any) => ({
       key: item.key,
       name: item.name,

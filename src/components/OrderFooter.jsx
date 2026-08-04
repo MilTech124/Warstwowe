@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronRight, FileDown, Loader2, Send } from "lucide-react";
+import { Check, ChevronRight, Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useConfiguratorStore, useConfiguratorStoreApi } from "@/store/configuratorStore";
-import { generateOrderPdf } from "@/lib/pdf/generateOrderPdf";
 import { useConfiguratorAccess } from "@/configurator/ConfiguratorContext";
 
 const ORDER_FIELDS = [
@@ -15,7 +14,7 @@ const ORDER_FIELDS = [
   { key: "orderNo", label: "Nr zamówienia", placeholder: "nadawany automatycznie", readOnly: true },
 ];
 
-export function OrderPdfFooter() {
+export function OrderFooter() {
   const [formOpen, setFormOpen] = useState(false);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
@@ -25,11 +24,11 @@ export function OrderPdfFooter() {
   const storeApi = useConfiguratorStoreApi();
   const order = useConfiguratorStore((state) => state.config.order);
   const updateOrder = useConfiguratorStore((state) => state.updateOrder);
-  const busy = Boolean(status) && status.phase !== "done";
+  const busy = Boolean(status);
 
   async function handleSubmitOrder() {
     setError(null);
-    setStatus({ phase: "saving", label: "Zapisywanie zamówienia…" });
+    setStatus({ label: "Zapisywanie zamówienia…" });
     try {
       const store = storeApi.getState();
       const currentOrder = store.config.order || {};
@@ -56,59 +55,11 @@ export function OrderPdfFooter() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Nie udało się zapisać zamówienia.");
       updateOrder({ orderNo: result.order.number });
-      const nextReceipt = {
-        orderId: result.order.id,
-        receiptToken: result.receiptToken,
-        number: result.order.number,
-        // Wycena jest liczona serwerowo i wraca tutaj — PDF powstaje
-        // w przeglądarce, więc bez tego dokument miałby cenę nieautorytatywną.
-        quote: result.quote ?? null,
-      };
-      setReceipt(nextReceipt);
+      setReceipt({ number: result.order.number });
       setStatus(null);
-      return nextReceipt;
     } catch (caught) {
       setStatus(null);
       setError(caught?.message || "Nie udało się zapisać zamówienia.");
-      throw caught;
-    }
-  }
-
-  async function handleGenerate() {
-    setError(null);
-    setStatus({ phase: "loading", label: "Przygotowanie…" });
-    const store = storeApi.getState();
-    try {
-      const activeReceipt = receipt || await handleSubmitOrder();
-      const result = await generateOrderPdf({
-        getConfig: () => storeApi.getState().config,
-        setViewModeOnly: store.setViewModeOnly,
-        setShowDimensions: store.setShowDimensions,
-        getLightingPreviewSuppressed: () => storeApi.getState().ui.lightingPreviewSuppressed,
-        setLightingPreviewSuppressed: store.setLightingPreviewSuppressed,
-        setQualityOverride: store.setQualityOverride,
-        onProgress: setStatus,
-        quote: activeReceipt?.quote ?? null,
-      });
-
-      const form = new FormData();
-      form.set("file", result.blob, result.fileName);
-      const upload = await fetch(
-        `/api/public/companies/${access.company.slug}/orders/${activeReceipt.orderId}/pdf`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${activeReceipt.receiptToken}` },
-          body: form,
-        },
-      );
-      if (!upload.ok && upload.status !== 503) {
-        const uploadResult = await upload.json();
-        throw new Error(uploadResult.error || "PDF pobrano, ale nie udało się go dołączyć do zamówienia.");
-      }
-      setStatus(null);
-    } catch (caught) {
-      setStatus(null);
-      setError(caught?.message || "Nie udało się wygenerować dokumentu.");
     }
   }
 
@@ -160,16 +111,6 @@ export function OrderPdfFooter() {
         {busy ? <Loader2 className="h-4 w-4 order-spinner" /> : receipt ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
         <span>{receipt ? `Zapisano ${receipt.number}` : busy ? status.label : "Wyślij zamówienie"}</span>
       </button>
-
-      {access.capabilities.orderPdf && (
-        <>
-          <button type="button" className="order-generate" onClick={handleGenerate} disabled={busy}>
-            {busy ? <Loader2 className="h-4 w-4 order-spinner" /> : <FileDown className="h-4 w-4" />}
-            <span>{busy ? status.label : "Generuj PDF zamówienia"}</span>
-          </button>
-          <small className="order-hint">Dokument zawiera opis obiektu, zestawienie stali, rysunki i wizualizacje.</small>
-        </>
-      )}
     </div>
   );
 }

@@ -90,7 +90,7 @@ export function frameSvg(config, model, { widthPt = 470, heightPt = 270 } = {}) 
         ["Słup pośredni", spec.profiles.post],
         ["Krokiew", spec.profiles.rafter],
         ["Płatew", spec.profiles.purlin],
-        ["Oczep / podwalina", spec.profiles.topRail],
+        ["Rygiel górny / podwalina", spec.profiles.topRail],
       ]
     : [
         ["Słup ramy", spec.profiles.column],

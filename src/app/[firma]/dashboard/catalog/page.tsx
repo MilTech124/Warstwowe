@@ -41,7 +41,21 @@ function CatalogCard({
           <ul className="divide-y divide-border">
             {items.map((item) => (
               <li key={item.key} className="flex items-center justify-between gap-3 px-5 py-3">
-                <span className="truncate text-sm font-medium">{item.name}</span>
+                <span className="flex min-w-0 items-center gap-3">
+                  {item.logoUrl ? (
+                    <img
+                      src={item.logoUrl}
+                      alt={`Logo ${item.name}`}
+                      className="h-8 w-12 shrink-0 rounded-md border border-border bg-white object-contain p-0.5"
+                    />
+                  ) : null}
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{item.name}</span>
+                    {item.tagline ? (
+                      <span className="block truncate text-xs text-muted-foreground">{item.tagline}</span>
+                    ) : null}
+                  </span>
+                </span>
                 <span className="shrink-0 text-xs text-muted-foreground">{describe(item)}</span>
               </li>
             ))}
@@ -91,9 +105,14 @@ export default async function CatalogPage({ params }: { params: Promise<{ firma:
           icon={<Layers3 size={20} />}
           items={panels}
           emptyLabel="Brak producentów płyt"
-          describe={(item) =>
-            item.products?.length ? `${item.products.length} produktów` : "Katalog bazowy"
-          }
+          describe={(item) => {
+            const products = (item.products ?? []) as any[];
+            if (!products.length) return "Katalog bazowy";
+            const withSpecs = products.filter((product) => product.specs?.lambdaWmK).length;
+            return withSpecs
+              ? `${products.length} produktów · λ dla ${withSpecs}`
+              : `${products.length} produktów`;
+          }}
         />
         <CatalogCard
           eyebrow="Otwory"

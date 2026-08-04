@@ -15,6 +15,8 @@ const catalogSchema = z.discriminatedUnion("entity", [
     status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]),
     logoUrl: z.string().url().or(z.literal("")).optional(),
     websiteUrl: z.string().url().or(z.literal("")).optional(),
+    tagline: z.string().trim().max(120).optional(),
+    description: z.string().trim().max(600).optional(),
   }),
   z.object({
     entity: z.literal("product"),
@@ -25,11 +27,23 @@ const catalogSchema = z.discriminatedUnion("entity", [
     name: z.string().trim().min(2).max(160),
     status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]),
     thicknessMm: z.array(z.number().positive()).optional(),
+    lengthOptionsM: z.array(z.number().positive()).optional(),
     colorIds: z.array(z.string()).optional(),
     profile: z.string().max(120).optional(),
     renderKind: z.string().max(120).optional(),
     modelUrl: z.string().url().or(z.literal("")).optional(),
     animationProfile: z.enum(["NONE", "SECTIONAL", "ROLLER", "TILTING"]).optional(),
+    specs: z
+      .object({
+        coreType: z.string().trim().max(40).optional(),
+        lambdaWmK: z.number().positive().max(1).optional(),
+        uValues: z
+          .array(z.object({ thicknessMm: z.number().positive(), uWm2K: z.number().positive() }))
+          .optional(),
+        fireClass: z.string().trim().max(40).optional(),
+        datasheetUrl: z.string().url().or(z.literal("")).optional(),
+      })
+      .optional(),
   }),
 ]);
 

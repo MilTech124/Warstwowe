@@ -1,6 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
-import { PACKAGE_DEFINITIONS } from "@/domain/plans";
 import { connectMongo } from "@/server/db/connection";
 import { Company, Counter, Order, OrderEvent } from "@/server/db/models";
 import { isSmtpConfigured, sendTransactionalEmail } from "@/server/email/smtp";
@@ -140,10 +138,6 @@ export function sanitizeConfiguration(
   return configuration;
 }
 
-function tokenHash(token: string) {
-  return createHash("sha256").update(token).digest("hex");
-}
-
 async function nextOrderNumber(company: any) {
   const year = new Date().getUTCFullYear();
   const key = `order:${company._id}:${year}`;
@@ -191,7 +185,6 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
     throw new Error("Oferta firmy zmieniła się. Odśwież konfigurator i sprawdź wybór ponownie.");
   }
   const configurationSnapshot = sanitizeConfiguration(input.configuration, bootstrap);
-  const receiptToken = randomBytes(32).toString("base64url");
 
   if (bootstrap.company.id === "demo-company" || !(await connectMongo())) {
     return {
@@ -200,7 +193,6 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
         number: `DEMO/${new Date().getUTCFullYear()}/${String(Date.now()).slice(-4)}`,
         status: "NEW",
       },
-      receiptToken,
     };
   }
 
@@ -231,7 +223,6 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
   const order = await Order.create({
     companyId: company._id,
     number,
-    publicTokenHash: tokenHash(receiptToken),
     status: "NEW",
     customer: input.customer,
     consent: input.consent,
@@ -253,13 +244,5 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
   await sendOrderNotification(bootstrap, order).catch(() => undefined);
   return {
     order: { id: String(order._id), number: order.number, status: order.status },
-    receiptToken,
-    // Wraca do przeglądarki, bo PDF jest generowany po stronie klienta i musi
-    // pokazać autorytatywną cenę, a nie policzoną lokalnie.
-    quote,
   };
-}
-
-export function verifyOrderReceiptToken(rawToken: string, storedHash: string) {
-  return tokenHash(rawToken) === storedHash;
 }

@@ -202,7 +202,16 @@ function dataTable({ headers, rows, widths, alignRight = [] }) {
  * @param {Array}  params.shots        zrzuty z captureViews
  * @param {Date}   [params.date]
  */
-export function buildOrderDocument({ config, summary, shots, date = new Date(), quote = null }) {
+export function buildOrderDocument({
+  config,
+  summary,
+  shots,
+  date = new Date(),
+  quote = null,
+  // Logo producentów jako data URL — pdfmake w przeglądarce nie pobiera
+  // obrazów z sieci samodzielnie.
+  manufacturerLogos = {},
+}) {
   const orderNo = orderNumberFor(config, date);
   const order = config.order ?? {};
   const heroShot = shots.find((shot) => shot.id === "orbit") ?? shots[0];
@@ -281,10 +290,22 @@ export function buildOrderDocument({ config, summary, shots, date = new Date(), 
   }
 
   // ---------------- 4. Poszycie ----------------
-  content.push(nextSection("Poszycie ścian"));
-  content.push(keyValueTable(summary.cladding.wallRows));
-  content.push(nextSection("Poszycie dachu"));
-  content.push(keyValueTable(summary.cladding.roofRows));
+  // Logo producenta obok tabeli — ta sama ekspozycja marki, za którą producent
+  // płaci w konfiguratorze, trafia do dokumentu oglądanego przez klienta.
+  const claddingBlock = (label, rows, logo) => {
+    content.push(nextSection(label));
+    if (!logo) return content.push(keyValueTable(rows));
+    return content.push({
+      columns: [
+        { width: "*", stack: [keyValueTable(rows)] },
+        { width: 90, image: logo, fit: [90, 46], alignment: "right" },
+      ],
+      columnGap: 12,
+    });
+  };
+
+  claddingBlock("Poszycie ścian", summary.cladding.wallRows, manufacturerLogos.wall);
+  claddingBlock("Poszycie dachu", summary.cladding.roofRows, manufacturerLogos.roof);
 
   // ---------------- 5. Obróbki i rynny ----------------
   content.push(nextSection("Obróbki blacharskie"));

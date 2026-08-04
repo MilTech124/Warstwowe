@@ -3,6 +3,7 @@ import { companyInvitationClaimFilter, normalizeCompanyEmail } from "@/domain/co
 import { CompanyMembership } from "@/server/db/models";
 import { findCompanyBySlug } from "@/server/services/companyService";
 import type { CompanyRole } from "@/types/saas";
+import { companyWriteIntentAllowed } from "@/domain/companyWriteIntent";
 
 /**
  * Authorization failures used to surface as HTTP 400 with the raw internal code
@@ -122,7 +123,10 @@ export function requireCompanyWriteIntent(
   request: Request,
   access: { superadminAccess?: boolean },
 ) {
-  if (access.superadminAccess && request.headers.get("x-superadmin-write-intent") !== "confirmed") {
+  if (!companyWriteIntentAllowed(
+    Boolean(access.superadminAccess),
+    request.headers.get("x-superadmin-write-intent"),
+  )) {
     throw new AuthError(
       "SUPERADMIN_READ_ONLY_MODE",
       403,

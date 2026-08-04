@@ -153,17 +153,17 @@ export function garageSpec(inputs) {
 
   // Ile krokwi POŚREDNICH naprawdę trzeba.
   //
-  // Płatew biegnie w poprzek spadu i opiera się na skrajnych oczepach skośnych
+  // Płatew biegnie w poprzek spadu i opiera się na skrajnych ryglach górnych skośnych
   // (na ścianach wzdłuż spadu) oraz na krokwiach pośrednich. Lekka płatew
   // przenosi ~3,5 m, więc dopóki budynek jest węższy, KROKWI POŚREDNICH NIE MA
-  // — płatwie leżą wprost na oczepach. Krokiew dochodzi dopiero wtedy, gdy
+  // — płatwie leżą wprost na ryglach górnych. Krokiew dochodzi dopiero wtedy, gdy
   // rozpiętość płatwi przekroczyłaby jej nośność.
   //
   // Wcześniej krokwie generowane były zawsze (rozstaw z krotności rozstawu
   // słupów), co dawało w garażu 3,5 m zbędną krokiew 100×60×3 przez całą długość.
   const purlinMaxSpanM = PURLIN_PRACTICAL_SPAN_M * level.spacingFactor;
   const interiorRafterCount = Math.max(0, Math.ceil(longSpan / purlinMaxSpanM) - 1);
-  // Dwie pozycje skrajne to oczepy skośne ścian, nie krokwie.
+  // Dwie pozycje skrajne to rygle górne skośne ścian, nie krokwie.
   const rafterCount = interiorRafterCount + 2;
   const rafterSpacing = longSpan / (rafterCount - 1);
 
@@ -222,9 +222,9 @@ export function garageSpec(inputs) {
       cornerPost,
       post,
       endPost,
-      sillRail: post, // podwalina/oczep „jak słup pośredni" — spójny system (docs 3.2)
+      sillRail: post, // podwalina/rygiel górny „jak słup pośredni" — spójny system (docs 3.2)
       topRail: post,
-      // Oczep skośny ścian wzdłuż spadu: leży na słupach, więc profil jak oczep,
+      // Rygiel górny skośny ścian wzdłuż spadu: leży na słupach, więc profil jak rygiel górny,
       // a nie jak swobodnie rozpięta krokiew.
       rakedTopRail: post,
       midGirt,

@@ -7,7 +7,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "test": "npm run test:3d && npm run test:saas",
-    "test:3d": "node --test --experimental-loader ./tests/alias-loader.mjs tests/frontProjectionMath.test.mjs tests/frontProjectionStructure.test.mjs tests/lightingMath.test.mjs tests/materialFinishes.test.mjs tests/materialAssets.test.mjs tests/presetOpenings.test.mjs tests/sceneQuality.test.mjs tests/configuratorAvailability.test.mjs tests/pricing.test.mjs",
+    "test:3d": "node --test --experimental-loader ./tests/alias-loader.mjs tests/frontProjectionMath.test.mjs tests/frontProjectionStructure.test.mjs tests/lightingMath.test.mjs tests/materialFinishes.test.mjs tests/materialAssets.test.mjs tests/presetOpenings.test.mjs tests/roofOpeningTransform.test.mjs tests/sceneQuality.test.mjs tests/configuratorAvailability.test.mjs tests/catalogPresentation.test.mjs tests/pricing.test.mjs",
     "test:saas": "tsx --test tests/saas.test.ts tests/payments.test.ts",
     "start": "next start -H 127.0.0.1"
   },

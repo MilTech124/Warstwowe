@@ -1,5 +1,5 @@
 // Szkielet garażu z płyt warstwowych: słupy narożne i pośrednie, podwalina,
-// oczep za spadkiem, krokwie wzdłuż spadu z płatwiami poprzecznymi (lub para
+// rygiel górny za spadkiem, krokwie wzdłuż spadu z płatwiami poprzecznymi (lub para
 // krokwi + belka kalenicowa dla dwuspadu), jętki, zastrzały, ramy otworów.
 
 import { isGableRoof, roofMetrics } from "@/scene/roofMath";
@@ -40,7 +40,7 @@ function purlinPositions(spec, gable, runSpan, purlinSpacing) {
   const runHalf = runSpan / 2;
 
   if (!gable) {
-    // Okapy są podparte oczepami na obu ścianach biegu — bierzemy tylko wnętrze.
+    // Okapy są podparte ryglami górnymi na obu ścianach biegu — bierzemy tylko wnętrze.
     return positionsBySpacing(runSpan, purlinSpacing, 3).slice(1, -1);
   }
 
@@ -91,8 +91,8 @@ export function buildGarage(inputs, spec, collector) {
   const postLongPositions = densifyPositions(roofLinePositions, postSpacing);
   const interiorLongPositions = postLongPositions.slice(1, -1);
 
-  // Oczep skośny leży NA słupach ściany (co ~1,2–1,8 m), więc jego rozpiętość to
-  // rozstaw słupów, a nie długość ściany — dlatego dostaje profil oczepu, a nie
+  // Rygiel górny skośny leży NA słupach ściany (co ~1,2–1,8 m), więc jego rozpiętość to
+  // rozstaw słupów, a nie długość ściany — dlatego dostaje profil rygla górnego, a nie
   // krokwi. Krokiew pośrednia rozpina się swobodnie między ścianami szczytowymi
   // i tylko ona potrzebuje przekroju z tabeli krokwi.
   const isRakedTopRail = (longCoord) => Math.abs(Math.abs(longCoord) - longHalf) < 0.01;
@@ -118,7 +118,7 @@ export function buildGarage(inputs, spec, collector) {
   const tieRun = Math.min((roofRun(inputs) / 2) * 0.45, runHalf - 0.15);
   const tieY = roofYOnRun(tieRun, inputs);
 
-  // Słup kończy się na SPODZIE elementu, który podpiera (oczepu lub krokwi) —
+  // Słup kończy się na SPODZIE elementu, który podpiera (rygla górnego lub krokwi) —
   // nie przebija go w połowie przekroju.
   const rafterUnderY = (runCoord) => flushTopY(runCoord, profiles.topRail.sizeM) - profiles.topRail.sizeM / 2;
   const rafterMembers = roofLinePositions.map((longCoord) => ({ coord: longCoord, size: roofLineProfile(longCoord).sizeM }));
@@ -215,7 +215,7 @@ export function buildGarage(inputs, spec, collector) {
     });
   });
 
-  // --- oczep: wspawany między krokwie, górne lico zlicowane z krokwiami ---
+  // --- rygiel górny: wspawany między krokwie, górne lico zlicowane z krokwiami ---
   runSides.forEach((runCoord) => {
     const railY = flushTopY(runCoord, profiles.topRail.sizeM);
     splitAtMembers(-longHalf, longHalf, rafterMembers).forEach(([from, to]) => {
@@ -259,11 +259,11 @@ export function buildGarage(inputs, spec, collector) {
     });
   }
 
-  // --- linie nośne połaci: skrajne oczepy skośne + krokwie pośrednie ---
+  // --- linie nośne połaci: skrajne rygle górne skośne + krokwie pośrednie ---
   roofLinePositions.forEach((longCoord) => {
     const raked = isRakedTopRail(longCoord);
     const profile = roofLineProfile(longCoord);
-    // Rola rozróżnia oba elementy w zestawieniu stali: oczep skośny ściany
+    // Rola rozróżnia oba elementy w zestawieniu stali: rygiel górny skośny ściany
     // to nie krokiew, choć leży w tej samej płaszczyźnie.
     const role = raked ? "rakedTopRail" : "rafter";
     const atY = (runCoord) => flushTopY(runCoord, profile.sizeM);

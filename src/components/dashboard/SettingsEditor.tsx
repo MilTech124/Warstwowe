@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { CompanyConfiguratorSettings, ConfiguratorBootstrap, FeatureKey } from "@/types/saas";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -207,6 +207,16 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
   const options = (key: keyof typeof catalog) => (catalog[key] || []) as CatalogOption[];
   const wallWindows = options("windowModels").filter((item) => item.placement !== "roof");
   const roofWindows = options("windowModels").filter((item) => item.placement === "roof");
+
+  // Wysyłka wymaga funkcji z pakietu ORAZ tego, żeby firma jej nie wyłączyła.
+  // Bierzemy availableCapabilities (uprawnienie pakietu, bez zawężeń firmy),
+  // bo capabilities niesie już stan OPUBLIKOWANY i nie odzwierciedla
+  // niezapisanych jeszcze przełączeń w tym formularzu.
+  const emailNotificationsEnabled =
+    Boolean(
+      bootstrap.availableCapabilities?.emailNotifications
+        ?? bootstrap.capabilities.emailNotifications,
+    ) && !settings.disabledFeatures.includes("emailNotifications");
 
   const currentEnabledFeatures = useMemo(
     () =>
@@ -559,13 +569,27 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
           description="Każdy adres podaj w osobnym wierszu."
           icon={BellRing}
         >
+          {/* Bez tej funkcji adresy zapiszą się, ale żaden e-mail nie wyjdzie. */}
+          {!emailNotificationsEnabled && (
+            <Alert className="border-warning/35 bg-warning/10">
+              <AlertTitle className="text-warning">Powiadomienia są nieaktywne</AlertTitle>
+              <AlertDescription>
+                {bootstrap.availableCapabilities?.emailNotifications
+                  ? "Wysyłka e-maili została wyłączona w sekcji „Dostępność i funkcje”. Adresy zapiszą się, ale powiadomienia nie będą wysyłane."
+                  : `Wysyłka e-maili nie jest dostępna w pakiecie ${bootstrap.packageCode}. Adresy możesz uzupełnić już teraz — zaczną działać po zmianie pakietu.`}
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="grid gap-2">
             <Label htmlFor="notification-emails">Odbiorcy wiadomości e-mail</Label>
             <Textarea
               id="notification-emails"
               rows={5}
               value={settings.orderNotificationEmails.join("\n")}
-              placeholder={"sprzedaz@firma.pl\nbiuro@firma.pl"}
+              // Wyraźne „np.”, bo dwa wiarygodne adresy w polu wielolinijkowym
+              // czytają się jak zapisana konfiguracja, a nie jak podpowiedź.
+              placeholder={"np. sprzedaz@firma.pl\nnp. biuro@firma.pl"}
               onChange={(event) =>
                 changeSettings({
                   ...settings,
