@@ -858,42 +858,6 @@ textarea {
   font-size: 12px;
 }
 
-.payu-card-shell {
-  display: grid;
-  gap: 10px;
-  padding: 16px;
-  border: 1px solid #cfddd9;
-  border-radius: 13px;
-  background: #fbfdfc;
-}
-
-.payu-label {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.payu-card-form {
-  display: grid;
-  min-height: 54px;
-  align-items: center;
-  padding: 7px;
-  border: 1px solid #c9d5d1;
-  border-radius: 9px;
-  background: #fff;
-}
-
-.payu-card-form > span,
-.payu-card-shell small {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--saas-muted);
-  font-size: 11px;
-}
-
 .form-error {
   margin: 0;
   padding: 11px 13px;

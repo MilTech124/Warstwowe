@@ -74,6 +74,7 @@ export function projectSummary(config, options = {}) {
     lighting: lightingSection(config),
     openings: openingRows(config),
     structure: structureSection(model, steel),
+    statics: staticsSection(model),
     warnings: model.warnings,
   };
 }
@@ -349,6 +350,86 @@ export function profileTable(spec, usedRolesFromModel) {
         spacingText: spacing ? `co ${formatNumber(spacing)} m` : "—",
       };
     });
+}
+
+// Zakres sprawdzenia opisany JEDNYM zdaniem, użytym i w panelu, i w PDF.
+// Dwie kopie rozjechałyby się przy pierwszej zmianie zakresu obliczeń, a to
+// akurat jest zdanie, którego nie wolno mieć w dwóch wersjach.
+export const STATICS_NOTE =
+  "Sprawdzenie ofertowe: belka swobodnie podparta, σ = M/Wy ≤ f_y. Bez sprawdzenia ugięcia (SGU), " +
+  "obciążenia wiatrem i nośności słupów na zginanie. Wymiarowanie wg PN-EN 1993 wykonuje uprawniony konstruktor.";
+
+export const STATICS_CHECK_HEADERS = [
+  "Element / profil",
+  "Rozpiętość [m]",
+  "Pas [m]",
+  "M [kNm]",
+  "Wy wym. [cm³]",
+  "Wy profilu [cm³]",
+  "Wytężenie",
+];
+
+/**
+ * Wytężenie tylko tam, gdzie realnie coś policzono. Dla profili dobranych
+ * z tablicy rozpiętości procent byłby zmyślony — progi `maxSpanM` to praktyka
+ * producentów, nie wynik obliczeń.
+ */
+export function utilisationText(check) {
+  if (check.method !== "bending" || check.utilisation == null) return "dobór wg rozpiętości";
+  const percent = `${formatNumber(check.utilisation * 100, 0)}%`;
+  return check.adequate ? percent : `${percent} — przekroczone`;
+}
+
+/**
+ * Założenia obliczeniowe i tabela sprawdzenia przekrojów.
+ *
+ * Eksportowana osobno od `projectSummary`, bo zakładka „Konstrukcja" buduje
+ * model sama (StructurePanel woła `buildStructure` bezpośrednio) i nie może
+ * przechodzić przez pełne zestawienie tylko po tę jedną sekcję.
+ *
+ * @param {ReturnType<typeof import("@/scene/structure/buildStructure").buildStructure>} model
+ */
+export function staticsSection(model) {
+  const spec = model.plan.spec;
+  const statics = spec.statics;
+
+  // Tylko role, które FAKTYCZNIE wystąpiły w modelu — ta sama zasada co
+  // w `profileTable`. Bez tego mały garaż (płatwie leżą wprost na ryglach
+  // górnych, krokwi nie ma wcale) pokazywałby sprawdzenie nieistniejącej krokwi.
+  const usedRoles = usedRoleSet(spec, model.members);
+  const checks = statics.checks.filter((check) => usedRoles == null || usedRoles.has(check.role));
+
+  return {
+    title: "Przyjęte obciążenia i sprawdzenie przekrojów",
+    note: STATICS_NOTE,
+    // Surowe liczby obok gotowych wierszy — panel formatuje je inaczej niż PDF
+    // (kafelki zamiast tabeli), a nie ma powodu, żeby liczył je drugi raz.
+    loads: statics,
+    checks,
+    rows: [
+      ["Strefa śniegowa", `${statics.snowZone} — sk = ${formatNumber(statics.skKnM2)} kN/m²`],
+      [
+        "Obciążenie śniegiem połaci",
+        `s = μ₁ · sk = ${formatNumber(statics.shapeCoefficient)} · ${formatNumber(statics.skKnM2)} = ${formatNumber(statics.roofSnowKnM2)} kN/m²`,
+      ],
+      ["Ciężar własny poszycia", `${formatNumber(statics.deadLoadKnM2)} kN/m²`],
+      ["Kombinacja obliczeniowa", `${formatNumber(statics.gammaG)} · G + ${formatNumber(statics.gammaQ)} · S`],
+      ["Obciążenie obliczeniowe połaci", `${formatNumber(statics.designLoadKnM2)} kN/m²`],
+      ["Schemat statyczny", "belka swobodnie podparta, M = q · L² / 8"],
+      ["Gatunek stali / f_y", `${statics.steelGrade} · ${formatNumber(statics.yieldMpa, 0)} MPa`],
+    ],
+    // Profil w tej samej komórce co rola — wiersz ma być czytelny bez zaglądania
+    // do tabeli doboru, a ósma kolumna nie zmieściłaby się w szerokości strony.
+    checkRows: checks.map((check) => [
+      `${roleLabel(check.role)} · ${check.profileLabel}`,
+      formatNumber(check.spanM),
+      check.tributaryM == null ? "—" : formatNumber(check.tributaryM),
+      check.momentKnM == null ? "—" : formatNumber(check.momentKnM),
+      check.requiredWyCm3 == null ? "—" : formatNumber(check.requiredWyCm3, 1),
+      check.providedWyCm3 == null ? "—" : formatNumber(check.providedWyCm3, 1),
+      utilisationText(check),
+    ]),
+  };
 }
 
 function usedRoleSet(spec, usedRolesFromModel) {

@@ -25,6 +25,7 @@ import { detectSceneQuality, sceneQualityProfile, SceneEnvironment } from "@/sce
 import { isWebglAvailable } from "@/scene/webglSupport";
 import { frontProjectionDepth } from "@/scene/frontProjectionMath";
 import { roofFootprint } from "@/scene/geometry";
+import { cameraView, orbitFitDistance } from "@/scene/cameraViews";
 import { useConfiguratorAccess } from "@/configurator/ConfiguratorContext";
 
 const presetIcons = {
@@ -34,12 +35,6 @@ const presetIcons = {
   single_garage: Box,
 };
 
-const CAMERA_VERTICAL_FOV = (38 * Math.PI) / 180;
-
-function perspectiveFitDistance(span) {
-  return (span / 2) / Math.tan(CAMERA_VERTICAL_FOV / 2) * 1.14;
-}
-
 function CameraRig({ config }) {
   const { camera } = useThree();
   const controlsRef = useRef(null);
@@ -47,66 +42,33 @@ function CameraRig({ config }) {
   const desiredTarget = useRef(new Vector3());
   const initialized = useRef(false);
   const animating = useRef(false);
-  const { widthM, lengthM, wallHeightM } = config.dimensions;
-  const footprint = roofFootprint(config);
-  const frontEdgeZ = footprint.centerZ + footprint.roofLength / 2;
-  const frontDistance = perspectiveFitDistance(Math.max(footprint.roofWidth, wallHeightM * 1.35)) * 1.28;
-  const sideDistance = perspectiveFitDistance(Math.max(footprint.roofLength, wallHeightM * 1.35)) * 1.22;
-  const boundsRadius = Math.hypot(footprint.roofWidth, footprint.roofLength, wallHeightM) / 2;
-  const orbitDistance = (boundsRadius / Math.sin(CAMERA_VERTICAL_FOV / 2)) * 1.18;
-  const orbitDirection = useMemo(() => new Vector3(1, 0.25, 1).normalize(), []);
+  const { widthM, lengthM } = config.dimensions;
+  const orbitDistance = orbitFitDistance(config);
 
-  const view = useMemo(() => {
-    const target = new Vector3(footprint.centerX, wallHeightM * 0.52, footprint.centerZ);
-    if (config.cameraMode === "front") {
-      return {
-        position: new Vector3(footprint.centerX, wallHeightM * 0.58, frontEdgeZ + frontDistance),
-        target,
-      };
-    }
-    if (config.cameraMode === "side") {
-      return {
-        position: new Vector3(footprint.centerX + footprint.roofWidth / 2 + sideDistance, wallHeightM * 0.58, footprint.centerZ),
-        target,
-      };
-    }
-    if (config.cameraMode === "top") {
-      return {
-        position: new Vector3(footprint.centerX + 0.001, perspectiveFitDistance(Math.max(footprint.roofWidth, footprint.roofLength)) * 1.18, footprint.centerZ + 0.001),
-        target: new Vector3(footprint.centerX, 0, footprint.centerZ),
-      };
-    }
-    if (config.cameraMode === "interior") {
-      return {
-        position: new Vector3(-widthM * 0.32, Math.min(1.62, wallHeightM * 0.6), -lengthM * 0.32),
-        target: new Vector3(widthM * 0.18, Math.min(1.4, wallHeightM * 0.51), lengthM * 0.22),
-      };
-    }
-    if (config.cameraMode === "structure") {
-      return {
-        position: target.clone().add(orbitDirection.clone().multiplyScalar(orbitDistance * 1.08)),
-        target,
-      };
-    }
-    return {
-      position: target.clone().add(orbitDirection.clone().multiplyScalar(orbitDistance)),
-      target,
-    };
-  }, [
+  // Kadry liczy cameraViews.js — TA SAMA funkcja, której używają zrzuty do PDF.
+  // Wcześniej ta matematyka istniała tu w drugiej kopii; rozjazd między kopiami
+  // dawałby zdjęcie w ofercie inne niż obraz, który klient zaakceptował na ekranie.
+  const cameraSignature = [
     config.cameraMode,
-    frontDistance,
-    frontEdgeZ,
-    footprint.centerX,
-    footprint.centerZ,
-    footprint.roofLength,
-    footprint.roofWidth,
-    lengthM,
-    orbitDirection,
-    orbitDistance,
-    sideDistance,
-    wallHeightM,
     widthM,
-  ]);
+    lengthM,
+    config.dimensions.wallHeightM,
+    config.roof.type,
+    config.roof.pitchPercent,
+    config.roof.overhangM.front,
+    config.roof.overhangM.back,
+    config.roof.overhangM.left,
+    config.roof.overhangM.right,
+    frontProjectionDepth(config),
+  ].join("|");
+
+  // Zależność po sygnaturze, nie po `config` — store podmienia cały obiekt przy
+  // każdym zapisie, więc zmiana koloru rynny restartowałaby animację kamery.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const view = useMemo(() => {
+    const { position, target } = cameraView(config, config.cameraMode);
+    return { position: new Vector3(...position), target: new Vector3(...target) };
+  }, [cameraSignature]);
 
   useEffect(() => {
     desiredPosition.current.copy(view.position);
@@ -387,6 +349,9 @@ export function GarageScene() {
 
   const nightPreview = activeTab === "lighting" && !lightingPreviewSuppressed;
   const qualityProfile = sceneQualityProfile(quality);
+  // Klucz celowo obejmuje TYLKO to, co zmienia rzut budynku. Nie dokładaj tu
+  // profili ani poziomu wzmocnienia: przekroje nie zmieniają obrysu, a każde
+  // przełączenie wymuszałoby przepieczenie cieni kontaktowych bez zysku.
   const contactShadowKey = [
     quality,
     config.preset,

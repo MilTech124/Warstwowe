@@ -1,9 +1,14 @@
-import type { CompanyConfiguratorSettings, ConfiguratorBootstrap } from "@/types/saas";
+import type {
+  CompanyConfiguratorSettings,
+  CompanyPrivacyProfile,
+  ConfiguratorBootstrap,
+} from "@/types/saas";
 
 type DemoBranding = ConfiguratorBootstrap["company"]["branding"];
 
 export type DemoState = {
   branding?: DemoBranding;
+  privacyProfile?: CompanyPrivacyProfile;
   settings?: CompanyConfiguratorSettings;
 };
 
@@ -35,6 +40,7 @@ export function getDemoDraftState(): DemoState {
 
 export function saveDemoState(input: {
   branding?: DemoBranding;
+  privacyProfile?: CompanyPrivacyProfile;
   settings: Omit<CompanyConfiguratorSettings, "published"> & { published?: boolean };
   publish: boolean;
 }): DemoState {
@@ -42,6 +48,7 @@ export function saveDemoState(input: {
   const nextVersion = Math.max(1, Number(current.settings?.version || input.settings.version || 1)) + 1;
   const next: DemoState = {
     branding: input.branding ?? current.branding,
+    privacyProfile: input.privacyProfile ?? current.privacyProfile,
     settings: {
       ...input.settings,
       version: nextVersion,

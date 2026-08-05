@@ -855,6 +855,18 @@
   background: #d18a1e;
 }
 
+/* Pozycja z katalogu wbudowanego w aplikację — istnieje, ale nie ma jeszcze
+   własnego wpisu w bazie, więc nie da się jej publikować ani wersjonować. */
+.sa-status-bazowy {
+  color: #5a6472;
+  border-color: #dfe4ea;
+  background: #f4f6f8;
+}
+
+.sa-status-bazowy i {
+  background: #9aa3ae;
+}
+
 .sa-status-superadmin {
   color: #2d54a5;
   border-color: #c7d6f2;
@@ -1785,6 +1797,40 @@
   padding: 9px 18px;
   border-top: 1px solid #edf0f4;
   grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  gap: 9px;
+}
+
+.sa-catalog-list article.is-active {
+  background: #f3f7ff;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+/* Cały wiersz jest przyciskiem wyboru — kliknięcie ładuje pozycję do formularza. */
+.sa-catalog-pick {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sa-catalog-list-footer {
+  padding: 11px 18px;
+  border-top: 1px solid #edf0f4;
+}
+
+.sa-catalog-hint {
+  margin: 0 0 11px;
+  color: var(--sa-subtle);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.sa-catalog-form-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 9px;
 }
 

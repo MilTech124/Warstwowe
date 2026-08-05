@@ -104,14 +104,12 @@ export const orderStatusLabels: Record<string, string> = {
   ARCHIVED: "Archiwum",
 };
 
-/** PayU payment statuses share the badge; the billing table renders them too. */
 export const paymentStatusLabels: Record<string, string> = {
   PENDING: "Oczekuje",
-  WAITING_FOR_CONFIRMATION: "W potwierdzaniu",
-  COMPLETED: "Rozliczona",
+  PAID: "Opłacona",
+  FAILED: "Nieudana",
+  REFUNDED: "Zwrócona",
   CANCELED: "Anulowana",
-  REJECTED: "Odrzucona",
-  ERROR: "Błąd",
 };
 
 const statusStyles: Record<string, string> = {
@@ -122,7 +120,9 @@ const statusStyles: Record<string, string> = {
   REJECTED: "border-destructive/30 bg-destructive/10 text-destructive",
   ARCHIVED: "border-border bg-muted text-muted-foreground",
   PENDING: "border-warning/35 bg-warning/10 text-warning",
-  WAITING_FOR_CONFIRMATION: "border-warning/35 bg-warning/10 text-warning",
+  PAID: "border-success/30 bg-success/10 text-success",
+  FAILED: "border-destructive/30 bg-destructive/10 text-destructive",
+  REFUNDED: "border-muted bg-muted text-muted-foreground",
   COMPLETED: "border-success/30 bg-success/10 text-success",
   CANCELED: "border-destructive/30 bg-destructive/10 text-destructive",
   ERROR: "border-destructive/30 bg-destructive/10 text-destructive",
@@ -136,7 +136,6 @@ const statusDots: Record<string, string> = {
   REJECTED: "bg-destructive",
   ARCHIVED: "bg-muted-foreground",
   PENDING: "bg-warning",
-  WAITING_FOR_CONFIRMATION: "bg-warning",
   COMPLETED: "bg-success",
   CANCELED: "bg-destructive",
   ERROR: "bg-destructive",

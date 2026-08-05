@@ -1,221 +1,207 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { companyCode, onboardingSchema } from "@/domain/company";
-import { addBillingPeriod } from "@/domain/plans";
 import { getRequestIdentity } from "@/server/auth";
 import { connectMongo } from "@/server/db/connection";
 import {
   Company,
   CompanyMembership,
   CompanySettings,
-  Payment,
   Subscription,
 } from "@/server/db/models";
-import { applicationUrl, createPayUOrder, payuConfigured } from "@/server/payu/client";
-import { payUPriceDescription, resolvePayUChargePrice } from "@/server/payu/pricing";
 import { seedSaasCatalog } from "@/server/seed";
 import { writeAudit } from "@/server/audit";
 import { getPlanDefinition } from "@/server/services/planService";
 import { apiError } from "@/server/apiError";
+import { createStripeCheckout, stripeConfigured } from "@/server/stripe/client";
 
 export const runtime = "nodejs";
-
-function clientIp(request: NextRequest) {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    || request.headers.get("x-real-ip")
-    || "127.0.0.1";
-}
 
 export async function POST(request: NextRequest) {
   try {
     const identity = await getRequestIdentity();
-    if (!identity.userId) return NextResponse.json({ error: "Najpierw zaloguj się przez Clerk." }, { status: 401 });
+    if (!identity.userId) {
+      return NextResponse.json({ error: "Najpierw zaloguj się przez Clerk." }, { status: 401 });
+    }
     if (!(await connectMongo())) {
       return NextResponse.json({ error: "MongoDB nie jest skonfigurowane." }, { status: 503 });
     }
+    if (!stripeConfigured()) {
+      return NextResponse.json({ error: "Stripe nie jest jeszcze skonfigurowany." }, { status: 503 });
+    }
 
     const input = onboardingSchema.parse(await request.json());
-    // Never derive PayU callbacks from the request URL — the Host header is
-    // client-controlled and would let a notification be aimed off-domain.
-    const appOrigin = applicationUrl();
-    if (input.billingMode === "RECURRING_MONTHLY" && !input.cardToken) {
-      return NextResponse.json({ error: "Brakuje tokena bezpiecznego formularza PayU." }, { status: 400 });
-    }
-    if (!payuConfigured()) {
-      return NextResponse.json({ error: "PayU nie jest jeszcze skonfigurowane." }, { status: 503 });
-    }
-
     await seedSaasCatalog();
     const selectedPlan = await getPlanDefinition(input.packageCode);
-    const existing = await Company.findOne({
-      $or: [{ slug: input.slug }, { ownerClerkUserId: identity.userId }],
-    }).lean();
-    if (existing) {
+    const client = await clerkClient();
+    const user = await client.users.getUser(identity.userId);
+    const email = user?.primaryEmailAddress?.emailAddress;
+    if (!email) {
       return NextResponse.json(
-        { error: existing.slug === input.slug ? "Ten adres firmy jest już zajęty." : "To konto ma już utworzoną firmę." },
+        { error: "Konto Clerk nie ma zweryfikowanego adresu e-mail." },
+        { status: 400 },
+      );
+    }
+
+    const slugOwner: any = await Company.findOne({ slug: input.slug }).lean();
+    if (slugOwner && slugOwner.ownerClerkUserId !== identity.userId) {
+      return NextResponse.json(
+        { error: "Ten adres firmy jest już zajęty — wybierz inny." },
         { status: 409 },
       );
     }
 
-    const client = await clerkClient();
-    const user = await client.users.getUser(identity.userId);
-    const email = user?.primaryEmailAddress?.emailAddress;
-    if (!email) return NextResponse.json({ error: "Konto Clerk nie ma zweryfikowanego adresu e-mail." }, { status: 400 });
-
-    // `Company.slug` and `Company.ownerClerkUserId` are both unique, so a
-    // concurrent double submit fails here rather than creating a second
-    // company for the same owner. The check above only makes the common case
-    // produce a friendlier message.
-    let company: any;
-    try {
-      company = await Company.create({
-        ownerClerkUserId: identity.userId,
-        slug: input.slug,
-        displayName: input.companyName,
-        code: companyCode(input.companyName),
-        status: "ACTIVE",
-        branding: {
-          name: input.companyName,
-          primaryColor: "#0f766e",
-          accentColor: "#f59e0b",
-          supportEmail: email,
-        },
-        billing: { legalName: input.companyName, email },
-      });
-    } catch (error: any) {
-      if (error?.code === 11000) {
-        const duplicateSlug = Object.keys(error?.keyPattern || {}).includes("slug");
-        return NextResponse.json(
-          {
-            error: duplicateSlug
-              ? "Ten adres firmy jest już zajęty."
-              : "To konto ma już utworzoną firmę.",
-          },
-          { status: 409 },
-        );
+    let company: any = await Company.findOne({ ownerClerkUserId: identity.userId });
+    let created = false;
+    if (company) {
+      const existingSubscription: any = await Subscription.findOne({ companyId: company._id }).lean();
+      if (existingSubscription && existingSubscription.status !== "ONBOARDING") {
+        // Rejestracja jest już zamknięta — to nie jest błąd użytkownika,
+        // więc odsyłamy go do panelu zamiast pokazywać ślepy komunikat.
+        return NextResponse.json({ slug: company.slug, alreadyRegistered: true });
       }
-      throw error;
+      // Wznowienie porzuconego onboardingu: dane z formularza muszą nadpisać
+      // firmę utworzoną przy poprzedniej próbie. Bez tego zmiana nazwy lub
+      // adresu była po cichu ignorowana, a stary slug zostawał na zawsze.
+      if (company.slug !== input.slug || company.displayName !== input.companyName) {
+        company.slug = input.slug;
+        company.displayName = input.companyName;
+        company.code = companyCode(input.companyName);
+        company.branding.name = input.companyName;
+        try {
+          await company.save();
+        } catch (error: any) {
+          if (error?.code === 11000) {
+            return NextResponse.json(
+              { error: "Ten adres firmy jest już zajęty — wybierz inny." },
+              { status: 409 },
+            );
+          }
+          throw error;
+        }
+      }
+    } else {
+      try {
+        company = await Company.create({
+          ownerClerkUserId: identity.userId,
+          slug: input.slug,
+          displayName: input.companyName,
+          code: companyCode(input.companyName),
+          status: "ACTIVE",
+          branding: {
+            name: input.companyName,
+            primaryColor: "#0f766e",
+            accentColor: "#f59e0b",
+            supportEmail: email,
+          },
+          billing: { legalName: input.companyName, email },
+        });
+        created = true;
+      } catch (error: any) {
+        if (error?.code === 11000) {
+          // Dwa szybkie submity mogą równolegle przejść wcześniejsze findOne().
+          // Jeśli pierwsze żądanie utworzyło firmę tego samego użytkownika,
+          // drugie powinno wznowić onboarding zamiast zgłaszać konflikt.
+          const concurrentCompany: any = await Company.findOne({
+            ownerClerkUserId: identity.userId,
+          });
+          if (concurrentCompany) {
+            company = concurrentCompany;
+            created = false;
+          } else {
+            return NextResponse.json(
+              { error: "Ten adres firmy jest już zajęty — wybierz inny." },
+              { status: 409 },
+            );
+          }
+        } else {
+          throw error;
+        }
+      }
     }
 
-    await CompanyMembership.create({
-      companyId: company._id,
-      clerkUserId: identity.userId,
-      email: email.toLowerCase(),
-      firstName: user?.firstName || undefined,
-      lastName: user?.lastName || undefined,
-      role: "OWNER",
-      status: "ACTIVE",
-      joinedAt: new Date(),
-    });
+    await Promise.all([
+      CompanyMembership.updateOne(
+        { companyId: company._id, email: email.toLowerCase() },
+        {
+          $setOnInsert: {
+            companyId: company._id,
+            clerkUserId: identity.userId,
+            email: email.toLowerCase(),
+            firstName: user?.firstName || undefined,
+            lastName: user?.lastName || undefined,
+            role: "OWNER",
+            status: "ACTIVE",
+            joinedAt: new Date(),
+          },
+        },
+        { upsert: true },
+      ),
+      CompanySettings.updateOne(
+        { companyId: company._id },
+        {
+          $setOnInsert: {
+            companyId: company._id,
+            version: 1,
+            publishedVersion: 1,
+            published: true,
+            manuallyEnabled: true,
+            defaultPresetId: "single_garage",
+            allowedPresetIds: ["single_garage", "double_garage", "hall", "large_hall"],
+            allowedPanelManufacturerIds: ["default_panels", "steelprofil"],
+            allowedGateManufacturerIds: ["wisniowski"],
+            orderNotificationEmails: [email],
+          },
+        },
+        { upsert: true },
+      ),
+    ]);
 
-    await CompanySettings.create({
-      companyId: company._id,
-      version: 1,
-      publishedVersion: 1,
-      published: true,
-      manuallyEnabled: true,
-      defaultPresetId: "single_garage",
-      allowedPresetIds: ["single_garage", "double_garage", "hall", "large_hall"],
-      allowedPanelManufacturerIds: ["default_panels", "steelprofil"],
-      allowedGateManufacturerIds: ["wisniowski"],
-      orderNotificationEmails: [email],
-    });
-
-    const now = new Date();
     const amountGross = input.billingMode === "PREPAID_SIX_MONTHS"
       ? selectedPlan.prepaidSixMonthsGross
       : selectedPlan.monthlyGross;
-    const chargePrice = resolvePayUChargePrice(input.packageCode, amountGross);
-    const subscription = await Subscription.create({
-      companyId: company._id,
-      packageCode: input.packageCode,
-      billingMode: input.billingMode,
-      status: "ONBOARDING",
-      amountGross,
-      currency: "PLN",
-      currentPeriodStart: now,
-      currentPeriodEnd:
-        input.billingMode === "RECURRING_MONTHLY"
-          ? undefined
-          : addBillingPeriod(now, input.billingMode),
-      payuExtCustomerId: String(company._id),
-      cardMask: input.cardMask,
-    });
-
-    const extOrderId = `SUB-${company._id}-${Date.now()}`;
-    const periodStart = now;
-    const periodEnd =
-      input.billingMode === "RECURRING_MONTHLY"
-        ? new Date(now.getTime() + 7 * 86400000)
-        : addBillingPeriod(now, input.billingMode);
-    const amountGrosz =
-      input.billingMode === "RECURRING_MONTHLY"
-        ? 0
-        : chargePrice.chargedAmountGross * 100;
-
-    const payment = await Payment.create({
-      companyId: company._id,
-      subscriptionId: subscription._id,
-      extOrderId,
-      status: "PENDING",
-      amountGross: amountGrosz / 100,
-      catalogAmountGross: chargePrice.catalogAmountGross,
-      testAmountOverride: chargePrice.testOverride,
-      packageCode: input.packageCode,
-      currency: "PLN",
-      billingMode: input.billingMode,
-      periodStart,
-      periodEnd,
-    });
-
-    try {
-      const result = await createPayUOrder({
-        extOrderId,
-        description: payUPriceDescription(
-          input.billingMode === "RECURRING_MONTHLY"
-            ? `Weryfikacja karty — trial ${input.packageCode}`
-            : `Pakiet ${input.packageCode}`,
-          chargePrice,
-        ),
-        totalAmountGrosz: amountGrosz,
-        customerIp: clientIp(request),
-        buyer: {
-          email,
-          firstName: user?.firstName || undefined,
-          lastName: user?.lastName || undefined,
-          extCustomerId: String(company._id),
-        },
-        token: input.billingMode === "RECURRING_MONTHLY" ? input.cardToken : undefined,
-        recurring: input.billingMode === "RECURRING_MONTHLY" ? "FIRST" : undefined,
-        continueUrl: `${appOrigin}/${input.slug}/dashboard/billing?payu=return`,
-        notifyUrl: `${appOrigin}/api/payu/notify`,
-      });
-      await Payment.updateOne(
-        { _id: payment._id },
-        { $set: { payuOrderId: result.orderId, rawStatus: result.status } },
-      );
-      await writeAudit({
+    let subscription: any = await Subscription.findOne({ companyId: company._id });
+    if (!subscription) {
+      subscription = await Subscription.create({
         companyId: company._id,
-        actorClerkUserId: identity.userId,
-        actorType: "USER",
-        action: "company.created",
-        entityType: "Company",
-        entityId: String(company._id),
-        after: { packageCode: input.packageCode, billingMode: input.billingMode },
+        packageCode: input.packageCode,
+        billingMode: input.billingMode,
+        status: "ONBOARDING",
+        amountGross,
+        currency: "PLN",
+        provider: "STRIPE",
       });
-      return NextResponse.json({
-        slug: input.slug,
-        redirectUri: result.redirectUri,
-        orderId: result.orderId,
-      });
-    } catch (error) {
-      await Payment.updateOne(
-        { _id: payment._id },
-        { $set: { status: "ERROR", rawStatus: { message: error instanceof Error ? error.message : String(error) } } },
-      );
-      throw error;
+    } else {
+      subscription.packageCode = input.packageCode;
+      subscription.billingMode = input.billingMode;
+      subscription.amountGross = amountGross;
+      subscription.provider = "STRIPE";
+      await subscription.save();
     }
+
+    const session = await createStripeCheckout({
+      company,
+      subscription,
+      email,
+      packageCode: input.packageCode,
+      billingMode: input.billingMode,
+    });
+    await writeAudit({
+      companyId: company._id,
+      actorClerkUserId: identity.userId,
+      actorType: "USER",
+      action: created ? "company.created" : "checkout.restarted",
+      entityType: created ? "Company" : "Subscription",
+      entityId: String(created ? company._id : subscription._id),
+      after: {
+        provider: "STRIPE",
+        packageCode: input.packageCode,
+        billingMode: input.billingMode,
+        checkoutSessionId: session.id,
+      },
+    });
+    return NextResponse.json({ slug: company.slug, checkoutUrl: session.url });
   } catch (error) {
-    return apiError(error, "Nie udało się utworzyć firmy.");
+    return apiError(error, "Nie udało się utworzyć firmy i płatności Stripe.");
   }
 }

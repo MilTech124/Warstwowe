@@ -15,17 +15,61 @@ function distance(a, b) {
   return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
 }
 
-export function createCollector(prefix) {
+// Podpowiedź ustawienia przekroju: kierunek osi MOCNEJ profilu.
+//
+// Renderer widzi wyłącznie `start`/`end`, a z samych współrzędnych osi mocnej
+// odczytać się nie da: rygiel ścienny i płatew bywają równoległe, a stoją
+// inaczej. Decyzja należy więc do modelu — tej samej warstwy, którą pokrywają
+// testy .mjs i z której korzystają rysunki.
+
+// Słupy: przekrój ustawiony w płaszczyźnie ramy, bo tam rama się zgina.
+// Dla kwadratowych SHS to kosmetyka, dla dwuteowych słupów hali — rzecz istotna.
+const FRAME_PLANE_ROLES = new Set([
+  "column",
+  "cornerPost",
+  "post",
+  "wallPost",
+  "endPost",
+  "overOpeningPost",
+  "underOpeningPost",
+  "openingJamb",
+  "projectionPost",
+]);
+
+// Rygle ścienne przenoszą wiatr, czyli obciążenie PROSTOPADŁE do ściany —
+// tam musi patrzeć ich oś mocna. Płatwie dachowe przenoszą śnieg (pionowo)
+// i zostają przy domyślnym ustawieniu środnika w pionie.
+const WALL_NORMAL_ROLES = new Set(["girt", "midGirt", "topRail", "sillRail"]);
+
+export function createCollector(prefix, { runAxis = "x" } = {}) {
   const members = [];
   const plates = [];
   const joints = [];
   const warnings = [];
   const counters = new Map();
 
+  const framePlaneUp = runAxis === "x" ? [1, 0, 0] : [0, 0, 1];
+
   function nextId(role) {
     const next = (counters.get(role) ?? 0) + 1;
     counters.set(role, next);
     return `${prefix}/${role}/${next}`;
+  }
+
+  function defaultUp(role, start, end) {
+    if (FRAME_PLANE_ROLES.has(role)) return framePlaneUp;
+    if (WALL_NORMAL_ROLES.has(role)) {
+      // Normalna ściany = iloczyn wektorowy kierunku elementu i pionu. Dla
+      // elementu poziomego wychodzi poziomo i prostopadle do ściany.
+      const nx = -(end[2] - start[2]);
+      const nz = end[0] - start[0];
+      const length = Math.hypot(nx, nz);
+      if (length > 1e-6) return [nx / length, 0, nz / length];
+    }
+    // Belka zginana pionowo — środnik pionowo. Dla elementu pochyłego renderer
+    // rzutuje tę podpowiedź na płaszczyznę przekroju, co daje środnik
+    // prostopadły do spadu, czyli poprawnie.
+    return [0, 1, 0];
   }
 
   // Deduplikacja obejmuje IDENTYFIKATOR OTWORU, nie tylko treść komunikatu.
@@ -39,10 +83,10 @@ export function createCollector(prefix) {
 
   return {
     /**
-     * @param {{ role, group, profile, start, end, material?, sizeM?, overlapFactor?, minLengthM? }} spec
+     * @param {{ role, group, profile, start, end, material?, sizeM?, up?, overlapFactor?, minLengthM? }} spec
      * @returns {object|null} dodany element lub null, gdy odrzucony jako zbyt krótki
      */
-    addMember({ role, group, profile, start, end, material = "steel", sizeM, overlapFactor = DEFAULT_OVERLAP_FACTOR, minLengthM = MIN_MEMBER_LENGTH_M }) {
+    addMember({ role, group, profile, start, end, material = "steel", sizeM, up, overlapFactor = DEFAULT_OVERLAP_FACTOR, minLengthM = MIN_MEMBER_LENGTH_M }) {
       const lengthM = distance(start, end);
       if (!(lengthM > minLengthM)) return null;
 
@@ -59,6 +103,7 @@ export function createCollector(prefix) {
         profileLabel: profile?.label ?? null,
         kgPerM: profile?.kgPerM ?? null,
         sizeM: size,
+        up: up ?? defaultUp(role, start, end),
         overlapM: size * overlapFactor,
         start,
         end,

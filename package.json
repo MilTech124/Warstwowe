@@ -7,8 +7,8 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "test": "npm run test:3d && npm run test:saas",
-    "test:3d": "node --test --experimental-loader ./tests/alias-loader.mjs tests/frontProjectionMath.test.mjs tests/frontProjectionStructure.test.mjs tests/lightingMath.test.mjs tests/materialFinishes.test.mjs tests/materialAssets.test.mjs tests/presetOpenings.test.mjs tests/roofOpeningTransform.test.mjs tests/sceneQuality.test.mjs tests/configuratorAvailability.test.mjs tests/catalogPresentation.test.mjs tests/pricing.test.mjs",
-    "test:saas": "tsx --test tests/saas.test.ts tests/payments.test.ts",
+    "test:3d": "node --test --experimental-loader ./tests/alias-loader.mjs tests/frontProjectionMath.test.mjs tests/frontProjectionStructure.test.mjs tests/lightingMath.test.mjs tests/materialFinishes.test.mjs tests/materialAssets.test.mjs tests/presetOpenings.test.mjs tests/roofOpeningTransform.test.mjs tests/sceneQuality.test.mjs tests/configuratorAvailability.test.mjs tests/catalogPresentation.test.mjs tests/pricing.test.mjs tests/structureStatics.test.mjs tests/cameraViews.test.mjs tests/drawings.test.mjs tests/shotProjection.test.mjs tests/profileShape.test.mjs",
+    "test:saas": "tsx --test tests/saas.test.ts tests/payments.test.ts tests/consent.test.ts",
     "start": "next start -H 127.0.0.1"
   },
   "dependencies": {
@@ -40,6 +40,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "sonner": "^2.0.7",
+    "stripe": "^22.4.0",
     "tailwind-merge": "^3.4.0",
     "three": "^0.181.2",
     "zod": "^4.4.3",

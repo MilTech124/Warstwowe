@@ -9,6 +9,8 @@ export const RESERVED_COMPANY_SLUGS = new Set([
   "onboarding",
   "panel",
   "cennik",
+  "polityka-prywatnosci",
+  "polityka-cookies",
   "demo",
   "_next",
   "favicon.ico",
@@ -28,8 +30,6 @@ export const onboardingSchema = z.object({
   slug: companySlugSchema,
   packageCode: z.enum(PACKAGE_CODES),
   billingMode: z.enum(BILLING_MODES),
-  cardToken: z.string().startsWith("TOK_").optional(),
-  cardMask: z.string().max(32).optional(),
 });
 
 export function companyCode(name: string) {

@@ -12,6 +12,16 @@ import { demoModeEnabled, getConfiguratorBootstrap } from "@/server/services/com
 import { writeAudit } from "@/server/audit";
 import { saveDemoState } from "@/server/demoState";
 import { apiError } from "@/server/apiError";
+import { emptyPrivacyProfile, isCompletePrivacyProfile } from "@/config/legal";
+
+const privacyProfileSchema = z.object({
+  controllerName: z.string().trim().max(180),
+  address: z.string().trim().max(300),
+  taxId: z.string().trim().max(32),
+  privacyEmail: z.string().trim().email().or(z.literal("")),
+  privacyPhone: z.string().trim().max(40).nullable().optional(),
+  noticeVersion: z.number().int().positive().optional(),
+});
 
 const settingsSchema = z.object({
   branding: z.object({
@@ -22,6 +32,7 @@ const settingsSchema = z.object({
     supportEmail: z.string().email().or(z.literal("")).nullable().optional(),
     supportPhone: z.string().trim().max(40).nullable().optional(),
   }).optional(),
+  privacyProfile: privacyProfileSchema.optional(),
   settings: z.object({
     version: z.number().int().positive(),
     manuallyEnabled: z.boolean(),
@@ -90,6 +101,15 @@ export async function PUT(
       );
       if (missingType) throw new Error("Każdy typ bramy musi mieć co najmniej jeden dostępny model.");
     }
+    const ordersAvailable = Boolean(
+      bootstrap.availableCapabilities?.orders ?? bootstrap.capabilities.orders,
+    ) && !input.settings.disabledFeatures.includes("orders");
+    if (input.publish && ordersAvailable && !isCompletePrivacyProfile(input.privacyProfile)) {
+      throw new Error(
+        "Uzupełnij nazwę administratora, adres, NIP i e-mail w sekcji prywatności przed publikacją zamówień.",
+      );
+    }
+
     // The demo tenant has no membership records, so it cannot go through
     // requireCompanyMember — but it must still not accept anonymous writes.
     // `demoModeEnabled()` already rules production out.
@@ -98,9 +118,15 @@ export async function PUT(
       if (!identity.userId) {
         throw new AuthError("AUTH_REQUIRED", 401, "Zaloguj się, aby zmienić ustawienia demo.");
       }
-      const demoState = saveDemoState(input);
+      const demoState = saveDemoState({
+        ...input,
+        privacyProfile: input.privacyProfile
+          ? emptyPrivacyProfile(input.privacyProfile)
+          : undefined,
+      });
       return NextResponse.json({
         settings: demoState.settings,
+        privacyProfile: demoState.privacyProfile,
       });
     }
 
@@ -126,15 +152,30 @@ export async function PUT(
       );
     }
     const nextVersion = Number((before as any)?.version || 0) + 1;
+    const draftPrivacyProfile = input.privacyProfile
+      ? { ...emptyPrivacyProfile(input.privacyProfile), noticeVersion: nextVersion }
+      : null;
+    const versionedPrivacyProfile = isCompletePrivacyProfile(draftPrivacyProfile)
+      ? draftPrivacyProfile
+      : null;
     const patch: Record<string, unknown> = {
       version: nextVersion,
-      draft: { settings: input.settings, branding: input.branding },
+      draft: {
+        settings: input.settings,
+        branding: input.branding,
+        privacyProfile: draftPrivacyProfile,
+      },
     };
     if (input.publish) {
       Object.assign(patch, input.settings);
+      patch.privacyProfile = versionedPrivacyProfile;
       patch.published = true;
       patch.publishedVersion = nextVersion;
-      patch.publishedSnapshot = { settings: input.settings, branding: input.branding };
+      patch.publishedSnapshot = {
+        settings: input.settings,
+        branding: input.branding,
+        privacyProfile: versionedPrivacyProfile,
+      };
     }
     const updated = await CompanySettings.findOneAndUpdate(
       { companyId },
@@ -157,6 +198,7 @@ export async function PUT(
         version: nextVersion,
         published: input.publish || Boolean((updated as any).published),
       },
+      privacyProfile: draftPrivacyProfile,
     });
   } catch (error) {
     return apiError(error, "Nie udało się zapisać ustawień.");

@@ -13,7 +13,7 @@ const actionLabels: Record<string, string> = {
   "subscription.payment_failed": "Płatność nie powiodła się",
   "subscription.canceled": "Anulowano subskrypcję",
   "subscription.expired": "Subskrypcja wygasła",
-  "payment.amount_mismatch": "Niezgodna kwota powiadomienia PayU",
+  "payment.amount_mismatch": "Niezgodna kwota powiadomienia Stripe",
   "company.created": "Utworzono firmę",
 };
 

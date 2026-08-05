@@ -9,14 +9,17 @@ import {
   INK,
   INK_LIGHT,
   STEEL,
+  TITLE_BLOCK_HEIGHT,
   createProjector,
   dimLineH,
   dimLineV,
+  drawingScaleLabel,
   formatMetersLabel,
   line,
   rect,
   svgDocument,
   text,
+  titleBlock,
 } from "@/lib/drawings/svgPrimitives";
 
 // Elementy leżące w płaszczyźnie ramy (wzdłuż osi spadu).
@@ -24,7 +27,7 @@ const IN_FRAME_ROLES = new Set(["cornerPost", "post", "column", "overOpeningPost
 // Elementy przebijające ramę prostopadle — rysowane jako przekroje.
 const CROSS_ROLES = new Set(["purlin", "ridge", "eaveStrut", "ridgePurlin", "topRail", "sillRail", "midGirt", "girt"]);
 
-export function frameSvg(config, model, { widthPt = 470, heightPt = 270 } = {}) {
+export function frameSvg(config, model, { widthPt = 515, heightPt = 340, accent = ACCENT, sheet = null } = {}) {
   const inputs = structureInputs(config);
   const { runAxis } = frameAxes(inputs);
   const { plan } = model;
@@ -40,10 +43,18 @@ export function frameSvg(config, model, { widthPt = 470, heightPt = 270 } = {}) 
   const frameLine = plan.framePositions.reduce((best, coord) => (Math.abs(coord) < Math.abs(best) ? coord : best), plan.framePositions[0] ?? 0);
 
   const topY = Math.max(roofYOnRun(-runHalf, inputs), roofYOnRun(0, inputs), roofYOnRun(runHalf, inputs));
+  const contentHeight = sheet ? heightPt - TITLE_BLOCK_HEIGHT : heightPt;
   const worldWidth = runSpan + 1.6;
   const worldHeight = topY + 0.9;
   const padding = { left: 36, right: 60, top: 24, bottom: 34 };
-  const projector = createProjector({ worldWidth, worldHeight, boxWidth: widthPt, boxHeight: heightPt, padding });
+  const projector = createProjector({
+    worldWidth,
+    worldHeight,
+    boxWidth: widthPt,
+    boxHeight: contentHeight,
+    padding,
+    snapScale: Boolean(sheet),
+  });
 
   const ux = (run) => projector.x(run + worldWidth / 2);
   const vy = (y) => projector.y(y);
@@ -109,12 +120,12 @@ export function frameSvg(config, model, { widthPt = 470, heightPt = 270 } = {}) 
   });
 
   // Wymiary rozpiętości i wysokości.
-  parts.push(dimLineH(ux(-runHalf), ux(runHalf), heightPt - 10, `rozpiętość ${formatMetersLabel(runSpan)}`));
+  parts.push(dimLineH(ux(-runHalf), ux(runHalf), contentHeight - 10, `rozpiętość ${formatMetersLabel(runSpan)}`));
   parts.push(dimLineV(vy(0), vy(roofYOnRun(-runHalf, inputs)), 24, formatMetersLabel(roofYOnRun(-runHalf, inputs))));
   parts.push(
     text(ux(0), vy(topY) - 5, `${spec.reinforcement.label} · strefa śniegowa ${spec.snowZone}`, {
       size: 6,
-      fill: ACCENT,
+      fill: accent,
     }),
   );
 
@@ -126,6 +137,17 @@ export function frameSvg(config, model, { widthPt = 470, heightPt = 270 } = {}) 
       anchor: "end",
     }),
   );
+
+  if (sheet) {
+    parts.push(
+      titleBlock(
+        widthPt,
+        heightPt,
+        { ...sheet, title: "PRZEKRÓJ RAMY", scaleLabel: drawingScaleLabel(projector.scaleDenominator) },
+        { accent },
+      ),
+    );
+  }
 
   return svgDocument(widthPt, heightPt, parts.join(""));
 }

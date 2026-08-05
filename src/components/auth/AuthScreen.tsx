@@ -1,7 +1,9 @@
 "use client";
 
-import { SignIn, SignUp } from "@clerk/nextjs";
+import { useEffect } from "react";
+import { SignIn, SignUp, useAuth } from "@clerk/nextjs";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -45,6 +47,56 @@ const clerkAppearance = {
     alert: "pm-clerk-alert",
   },
 };
+
+function ClerkAuthForm({
+  mode,
+  redirectUrl,
+}: {
+  mode: "sign-in" | "sign-up";
+  redirectUrl?: string;
+}) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const router = useRouter();
+  const destination = redirectUrl || "/panel";
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      router.replace(destination);
+    }
+  }, [destination, isLoaded, isSignedIn, router]);
+
+  if (isLoaded && isSignedIn) {
+    return (
+      <div className="pm-setup-notice" role="status" aria-live="polite">
+        <ShieldCheck size={20} />
+        <div>
+          <strong>Weryfikacja zakończona</strong>
+          <p>Przenosimy Cię do panelu…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return mode === "sign-in" ? (
+    <SignIn
+      path="/logowanie"
+      routing="path"
+      signUpUrl="/rejestracja"
+      forceRedirectUrl={redirectUrl}
+      fallbackRedirectUrl="/panel"
+      appearance={clerkAppearance}
+    />
+  ) : (
+    <SignUp
+      path="/rejestracja"
+      routing="path"
+      signInUrl="/logowanie"
+      forceRedirectUrl={redirectUrl}
+      fallbackRedirectUrl="/panel"
+      appearance={clerkAppearance}
+    />
+  );
+}
 
 export function AuthScreen({
   mode,
@@ -131,25 +183,7 @@ export function AuthScreen({
           </div>
 
           {configured ? (
-            isSignIn ? (
-              <SignIn
-                path="/logowanie"
-                routing="path"
-                signUpUrl="/rejestracja"
-                forceRedirectUrl={redirectUrl}
-                fallbackRedirectUrl="/panel"
-                appearance={clerkAppearance}
-              />
-            ) : (
-              <SignUp
-                path="/rejestracja"
-                routing="path"
-                signInUrl="/logowanie"
-                forceRedirectUrl={redirectUrl}
-                fallbackRedirectUrl="/panel"
-                appearance={clerkAppearance}
-              />
-            )
+            <ClerkAuthForm mode={mode} redirectUrl={redirectUrl} />
           ) : (
             <div className="pm-setup-notice" role="status">
               <ShieldCheck size={20} />
@@ -162,6 +196,11 @@ export function AuthScreen({
               </div>
             </div>
           )}
+          <nav className="pm-auth-legal" aria-label="Dokumenty prawne">
+            <Link href="/polityka-prywatnosci">Polityka prywatności</Link>
+            <Link href="/polityka-cookies">Polityka cookies</Link>
+            <button type="button" data-open-consent-settings="true">Ustawienia cookies</button>
+          </nav>
         </div>
       </section>
     </main>

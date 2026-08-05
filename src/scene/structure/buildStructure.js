@@ -71,7 +71,10 @@ export function buildStructure(inputs) {
   const structureClass = getStructureClass(inputs.dimensions);
   const isGarage = structureClass === "garage_frame";
   const spec = isGarage ? garageSpec(inputs) : hallSpec(inputs, structureClass);
-  const collector = createCollector(isGarage ? "garage" : "hall");
+  // Oś ramy trafia do kolektora, bo to on ustala orientację przekrojów: słupy
+  // mają stać osią mocną w płaszczyźnie ramy.
+  const { runAxis, longAxis } = frameAxes(inputs);
+  const collector = createCollector(isGarage ? "garage" : "hall", { runAxis });
 
   if (isGarage) {
     buildGarage(inputs, spec, collector);
@@ -87,7 +90,6 @@ export function buildStructure(inputs) {
   warnAboutSectionCapacity(spec, collector);
 
   const { members, plates, joints, warnings } = collector.finish();
-  const { runAxis, longAxis } = frameAxes(inputs);
   const frameSpacing = isGarage ? spec.rafterSpacing : spec.baySpacing;
 
   return {
@@ -110,3 +112,4 @@ export function buildStructure(inputs) {
     },
   };
 }
+

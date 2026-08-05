@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSuperadmin } from "@/server/auth";
 import { writeAudit } from "@/server/audit";
 import { CatalogManufacturer, CatalogProduct } from "@/server/db/models";
+import { connectMongo } from "@/server/db/connection";
 import { apiError } from "@/server/apiError";
 
 const catalogSchema = z.discriminatedUnion("entity", [
@@ -50,15 +51,26 @@ const catalogSchema = z.discriminatedUnion("entity", [
 export async function POST(request: NextRequest) {
   try {
     const identity = await requireSuperadmin();
+    if (!(await connectMongo())) {
+      return NextResponse.json({ error: "Baza danych jest niedostępna." }, { status: 503 });
+    }
     const input = catalogSchema.parse(await request.json());
     const Model = input.entity === "manufacturer" ? CatalogManufacturer : CatalogProduct;
-    const before = input.id ? await Model.findById(input.id).lean() : null;
+    // Bez `id` szukamy po kluczu naturalnym: pozycja z katalogu statycznego nie
+    // ma jeszcze dokumentu, a pierwszy zapis ma ją założyć, nie odbić się o 409.
+    const naturalKey = input.entity === "manufacturer"
+      ? { kind: input.kind, key: input.key }
+      : { kind: input.kind, manufacturerKey: input.manufacturerKey, key: input.key };
+    const before = input.id
+      ? await Model.findById(input.id).lean()
+      : await Model.findOne(naturalKey).lean();
     const version = Number((before as any)?.version || 0) + 1;
     const values = { ...input, version };
     delete (values as any).entity;
     delete (values as any).id;
-    const document = input.id
-      ? await Model.findByIdAndUpdate(input.id, { $set: values }, { new: true }).lean()
+    const targetId = input.id || (before as any)?._id;
+    const document = targetId
+      ? await Model.findByIdAndUpdate(targetId, { $set: values }, { new: true }).lean()
       : await Model.create(values);
     await writeAudit({
       actorClerkUserId: identity.userId,

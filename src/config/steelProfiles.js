@@ -260,12 +260,6 @@ export const HALL_PROFILE_TABLES = {
 };
 
 /**
- * Dobór profilu dla roli i rozpiętości. `stepUp` podnosi wybór o N pozycji
- * w tablicy (wzmocnienie konstrukcji) — nigdy poza ostatnią pozycję.
- *
- * @returns {{ id, label, kind, hMm, bMm, tMm, kgPerM, sizeM }}
- */
-/**
  * Dobór profilu wg NOŚNOŚCI NA ZGINANIE, a nie samej rozpiętości.
  *
  * Belka zbierająca obciążenie z pasa o szerokości `tributaryM` przenosi
@@ -275,7 +269,11 @@ export const HALL_PROFILE_TABLES = {
  * Schemat: belka swobodnie podparta, M = qL²/8, σ = M/Wy ≤ f_y.
  * `stepUp` (wzmocnienie) podnosi wybór o N pozycji ponad wymaganą.
  *
- * @returns {{ profile: object, requiredWyCm3: number, adequate: boolean }}
+ * `check` to zapis toku doboru do udokumentowania w ofercie — dopisany
+ * addytywnie, więc `profile`/`requiredWyCm3`/`adequate` zostają bez zmian
+ * dla dotychczasowych konsumentów.
+ *
+ * @returns {{ profile: object, requiredWyCm3: number, adequate: boolean, check: object }}
  */
 export function pickProfileByBending(tables, role, { spanM, tributaryM, loadKnM2 }, stepUp = 0) {
   const table = tables[role];
@@ -289,15 +287,78 @@ export function pickProfileByBending(tables, role, { spanM, tributaryM, loadKnM2
   const firstAdequate = candidates.findIndex((profile) => (sectionModulusCm3(profile) ?? 0) >= requiredWyCm3);
   const baseIndex = firstAdequate === -1 ? candidates.length - 1 : firstAdequate;
   const index = Math.min(candidates.length - 1, baseIndex + stepUp);
+  const profile = candidates[index];
+
+  // Wskaźnik profilu PO uwzględnieniu stepUp. Gdyby brać go sprzed podniesienia,
+  // poziom „Wzmocniona" byłby w dokumencie niewidoczny — wytężenie zostawałoby
+  // przy 100%, choć realnie spada.
+  const providedWyCm3 = sectionModulusCm3(profile) ?? 0;
+  // Gdy nawet najmocniejszy profil z tablicy nie wystarcza, trzeba to zgłosić.
+  const adequate = providedWyCm3 >= requiredWyCm3;
 
   return {
-    profile: candidates[index],
+    profile,
     requiredWyCm3,
-    // Gdy nawet najmocniejszy profil z tablicy nie wystarcza, trzeba to zgłosić.
-    adequate: (sectionModulusCm3(candidates[index]) ?? 0) >= requiredWyCm3,
+    adequate,
+    check: {
+      role,
+      method: "bending",
+      scheme: "simple_beam",
+      spanM,
+      tributaryM,
+      loadKnM2,
+      lineLoadKnM,
+      momentKnM,
+      requiredWyCm3,
+      providedWyCm3,
+      utilisation: providedWyCm3 > 0 ? requiredWyCm3 / providedWyCm3 : null,
+      adequate,
+      profileId: profile.id,
+      profileLabel: profile.label,
+      yieldMpa: STEEL_YIELD_MPA,
+    },
   };
 }
 
+/**
+ * Zapis doboru „wg rozpiętości z tablicy" — do udokumentowania w ofercie obok
+ * rekordów ze zginania.
+ *
+ * Świadomie NIE liczy wytężenia: progi `maxSpanM` to praktyka producentów
+ * (docs tabela 3.2), a nie wynik obliczeń, więc procent byłby zmyślony.
+ * `adequate: null` (a nie `false`) jest tu nośne — `warnAboutSectionCapacity`
+ * reaguje wyłącznie na `=== false`, więc rekord rozpiętościowy nie może udawać
+ * przekroju niedowymiarowanego.
+ *
+ * @returns {object} rekord o tym samym kształcie co `check` z pickProfileByBending
+ */
+export function spanPickRecord(role, profile, { spanM, basis } = {}) {
+  return {
+    role,
+    method: "span",
+    scheme: null,
+    spanM,
+    tributaryM: null,
+    loadKnM2: null,
+    lineLoadKnM: null,
+    momentKnM: null,
+    requiredWyCm3: null,
+    providedWyCm3: sectionModulusCm3(profile),
+    utilisation: null,
+    adequate: null,
+    profileId: profile.id,
+    profileLabel: profile.label,
+    yieldMpa: STEEL_YIELD_MPA,
+    basis: basis ?? "dobór wg rozpiętości z tablicy",
+  };
+}
+
+/**
+ * Dobór profilu dla roli i rozpiętości. `stepUp` podnosi wybór o N pozycji
+ * w tablicy (wzmocnienie konstrukcji) — nigdy poza ostatnią pozycję.
+ *
+ * @returns {{ id, label, kind, hMm, bMm, tMm, kgPerM, sizeM }}
+ */
 export function pickProfile(tables, role, spanM, stepUp = 0) {
   const table = tables[role];
   if (!table) throw new Error(`Brak tabeli profili dla roli "${role}"`);

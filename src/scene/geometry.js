@@ -1,4 +1,4 @@
-import { MathUtils, Quaternion, Vector3 } from "three";
+import { MathUtils, Matrix4, Quaternion, Vector3 } from "three";
 import { isGableRoof, roofMetrics, roofPitchBounds, slopedRoofLength } from "@/scene/roofMath";
 import { effectiveFrontOverhangM } from "@/scene/frontProjectionMath";
 import { roofFootprint, wallTopHeightAt } from "@/scene/wallProfile";
@@ -105,6 +105,55 @@ export function quaternionBetween(start, end) {
   return {
     position: a.add(b).multiplyScalar(0.5).toArray(),
     length: direction.length(),
+    quaternion,
+  };
+}
+
+/**
+ * Ustawienie profilu w przestrzeni: +Z wzdłuż elementu, +Y wzdłuż `up`
+ * zortogonalizowanego względem osi elementu.
+ *
+ * `quaternionBetween` ustala WYŁĄCZNIE kierunek — obrót wokół własnej osi
+ * zostaje po nim nieokreślony. Dla kwadratowego boxa nie miało to znaczenia,
+ * dla dwuteownika i płatwi zetowej decyduje, czy środnik stoi pionowo.
+ *
+ * Ortogonalizacja jest tu celowa: dla pochyłej krokwi `up = [0,1,0]` nie jest
+ * prostopadłe do elementu, a po rzucie na płaszczyznę przekroju daje środnik
+ * prostopadły do spadu — czyli poprawnie. Generator podaje więc prostą wartość,
+ * a jedyny kawałek matematyki zostaje w jednym miejscu.
+ *
+ * @param {[number,number,number]} start
+ * @param {[number,number,number]} end
+ * @param {[number,number,number]} [up]
+ */
+export function memberTransform(start, end, up = [0, 1, 0]) {
+  const a = new Vector3(...start);
+  const b = new Vector3(...end);
+  const direction = b.clone().sub(a);
+  const length = direction.length();
+  const forward = direction.clone().normalize();
+
+  let hint = new Vector3(...up);
+  if (!(hint.lengthSq() > 1e-12)) hint = new Vector3(0, 1, 0);
+  hint.normalize();
+
+  // Zdegenerowany przypadek `up ∥ oś`: iloczyn wektorowy dałby wektor zerowy,
+  // a z niego kwaterniony NaN — three renderuje wtedy NIC, czyli szkielet znika.
+  // Zdarza się realnie: przy niskiej ściance „pionowy" słupek bywa prawie poziomy.
+  if (Math.abs(hint.dot(forward)) > 0.999) {
+    hint = Math.abs(forward.y) > 0.9 ? new Vector3(0, 0, 1) : new Vector3(0, 1, 0);
+  }
+
+  const right = new Vector3().crossVectors(hint, forward).normalize();
+  const strong = new Vector3().crossVectors(forward, right).normalize();
+
+  const quaternion = new Quaternion().setFromRotationMatrix(
+    new Matrix4().makeBasis(right, strong, forward),
+  );
+
+  return {
+    position: a.clone().add(b).multiplyScalar(0.5).toArray(),
+    length,
     quaternion,
   };
 }

@@ -53,6 +53,29 @@ export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
 export type FeatureMap = Record<FeatureKey, boolean>;
 
+export interface ConsentPreferences {
+  necessary: true;
+  analytics: boolean;
+  marketing: boolean;
+}
+
+export interface ConsentRecord {
+  consentId: string;
+  policyVersion: string;
+  preferences: ConsentPreferences;
+  decidedAt: string;
+  expiresAt: string;
+}
+
+export interface CompanyPrivacyProfile {
+  controllerName: string;
+  address: string;
+  taxId: string;
+  privacyEmail: string;
+  privacyPhone?: string | null;
+  noticeVersion: number;
+}
+
 export interface CompanyBranding {
   name: string;
   logoUrl?: string | null;
@@ -105,6 +128,7 @@ export interface ConfiguratorBootstrap {
     id: string;
     slug: string;
     branding: CompanyBranding;
+    privacyProfile: CompanyPrivacyProfile | null;
   };
   packageCode: PackageCode;
   accessActive: boolean;
@@ -131,7 +155,10 @@ export interface OrderCreateInput {
     email: string;
   };
   notes?: string;
-  consent: boolean;
+  /** @deprecated Kept only for requests sent by older clients. */
+  consent?: boolean;
+  privacyNoticeAccepted?: boolean;
+  privacyNoticeVersion?: number;
   settingsVersion: number;
   configuration: Record<string, unknown> & { schemaVersion: number };
 }

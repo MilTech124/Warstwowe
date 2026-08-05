@@ -77,24 +77,115 @@ export function formatMetersLabel(value) {
   return `${Number(value).toFixed(2).replace(".", ",")} m`;
 }
 
+// Znormalizowany szereg skal rysunkowych. Rysunek dopasowany do arkusza wypada
+// na przypadkowe „1:87", co czyta się jak błąd — schodzimy więc do najbliższej
+// wartości z szeregu. Zawsze W DÓŁ (mniejszy rysunek), żeby treść nadal się mieściła.
+const NORMALISED_SCALES = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000];
+
+// 1 pt = 25,4/72 mm, więc mianownik skali = (mm w metrze) / (mm rysunku na metr).
+export function drawingScaleDenominator(scalePtPerM) {
+  return (1000 * 72) / (25.4 * scalePtPerM);
+}
+
+function scaleFromDenominator(denominator) {
+  return (1000 * 72) / (25.4 * denominator);
+}
+
+export function drawingScaleLabel(denominator) {
+  return `1:${Math.round(denominator)}`;
+}
+
 /**
  * Skala odwzorowująca prostokąt świata na obszar rysunku (w punktach),
  * z zachowaniem proporcji. Oś Y jest odwracana, bo w SVG rośnie w dół.
+ *
+ * @param {object} params
+ * @param {boolean} [params.snapScale]  zejdź do znormalizowanej skali rysunkowej,
+ *   żeby tabelka mogła podać uczciwe „1:100" zamiast wyliczonego „1:87"
  */
-export function createProjector({ worldWidth, worldHeight, boxWidth, boxHeight, padding }) {
+export function createProjector({ worldWidth, worldHeight, boxWidth, boxHeight, padding, snapScale = false }) {
   const usableWidth = boxWidth - padding.left - padding.right;
   const usableHeight = boxHeight - padding.top - padding.bottom;
-  const scale = Math.min(usableWidth / worldWidth, usableHeight / worldHeight);
+  const fitted = Math.min(usableWidth / worldWidth, usableHeight / worldHeight);
+
+  const fittedDenominator = drawingScaleDenominator(fitted);
+  const snapped = snapScale ? NORMALISED_SCALES.find((value) => value >= fittedDenominator) : null;
+  const scale = snapped ? scaleFromDenominator(snapped) : fitted;
+
   const offsetX = padding.left + (usableWidth - worldWidth * scale) / 2;
   const offsetY = padding.top + (usableHeight - worldHeight * scale) / 2;
 
   return {
     scale,
+    scaleDenominator: snapped ?? fittedDenominator,
     // u, v w układzie świata liczone od lewego-dolnego narożnika prostokąta.
     x: (u) => offsetX + u * scale,
     y: (v) => offsetY + (worldHeight - v) * scale,
     length: (value) => value * scale,
   };
+}
+
+// Wysokość tabelki rysunkowej. Generatory odejmują ją od arkusza, żeby rysunek
+// i linie wymiarowe nie wchodziły pod tabelkę.
+export const TITLE_BLOCK_HEIGHT = 52;
+
+// Roboto 6,5 pt ma ~3,1 pt na znak. Bez skrócenia długa nazwa firmy wychodziłaby
+// poza komórkę — svg-to-pdfkit nie zawija tekstu ani go nie przycina.
+function clip(value, widthPt) {
+  const source = String(value ?? "—").trim() || "—";
+  const maxChars = Math.max(4, Math.floor((widthPt - 8) / 3.1));
+  return source.length <= maxChars ? source : `${source.slice(0, maxChars - 1)}…`;
+}
+
+/**
+ * Tabelka rysunkowa u dołu arkusza — obiekt, tytuł, inwestor, wykonawca,
+ * skala, numer i data. Zbudowana wyłącznie z prymitywów tego modułu, więc
+ * dziedziczy ograniczenia svg-to-pdfkit (brak CSS, jawne `dy`, escapowanie).
+ *
+ * @param {number} boxWidth
+ * @param {number} boxHeight   pełna wysokość arkusza — tabelka siada na dole
+ * @param {{object?, title?, drawingNo?, scaleLabel?, date?, investor?, contractor?}} fields
+ */
+export function titleBlock(boxWidth, boxHeight, fields = {}, { accent = ACCENT } = {}) {
+  const top = boxHeight - TITLE_BLOCK_HEIGHT;
+  const rowHeight = TITLE_BLOCK_HEIGHT / 2;
+  const parts = [rect(0, top, boxWidth, TITLE_BLOCK_HEIGHT, { stroke: INK, strokeWidth: 0.8, fill: "#ffffff" })];
+
+  const cell = (x, y, width, label, value, { emphasise = false } = {}) => {
+    parts.push(text(x + 4, y + 9, label, { size: 4.8, fill: INK_LIGHT, anchor: "start" }));
+    parts.push(
+      text(x + 4, y + 19, clip(value, width), {
+        size: emphasise ? 7.2 : 6.5,
+        fill: emphasise ? accent : INK,
+        anchor: "start",
+        bold: true,
+      }),
+    );
+  };
+
+  const columns = [0.4, 0.24, 0.18, 0.18].map((share) => share * boxWidth);
+  const [c1, c2, c3, c4] = columns;
+
+  // Górny wiersz: obiekt, inwestor, skala, numer rysunku.
+  cell(0, top, c1, "OBIEKT", fields.object);
+  cell(c1, top, c2, "INWESTOR", fields.investor);
+  cell(c1 + c2, top, c3, "SKALA", fields.scaleLabel);
+  cell(c1 + c2 + c3, top, c4, "NR RYSUNKU", fields.drawingNo);
+
+  // Dolny wiersz: tytuł rysunku (wyróżniony), wykonawca, data.
+  cell(0, top + rowHeight, c1, "RYSUNEK", fields.title, { emphasise: true });
+  cell(c1, top + rowHeight, c2, "WYKONAWCA", fields.contractor);
+  cell(c1 + c2, top + rowHeight, c3 + c4, "DATA", fields.date);
+
+  // Linie siatki: poziom między wierszami i pionowe podziały kolumn.
+  parts.push(line(0, top + rowHeight, boxWidth, top + rowHeight, { stroke: INK, width: 0.5 }));
+  parts.push(line(c1, top, c1, boxHeight, { stroke: INK, width: 0.5 }));
+  parts.push(line(c1 + c2, top, c1 + c2, boxHeight, { stroke: INK, width: 0.5 }));
+  // Podział skala/nr rysunku istnieje tylko w górnym wierszu — na dole DATA
+  // zajmuje obie kolumny.
+  parts.push(line(c1 + c2 + c3, top, c1 + c2 + c3, top + rowHeight, { stroke: INK, width: 0.5 }));
+
+  return parts.join("");
 }
 
 export function svgDocument(widthPt, heightPt, body) {

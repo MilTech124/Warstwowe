@@ -6,14 +6,17 @@
 // ręcznego uzupełnienia — dokładnie tak, jak działało to wcześniej.
 
 import { CUTTING_ALLOWANCE } from "@/lib/bom/steelBom";
-import { formatKg, formatM2, formatNumber } from "@/lib/projectSummary";
+import { formatKg, formatNumber, STATICS_CHECK_HEADERS } from "@/lib/projectSummary";
 import { elevationSvg } from "@/lib/drawings/elevationSvg";
 import { frameSvg } from "@/lib/drawings/frameSvg";
 import { planSvg } from "@/lib/drawings/planSvg";
 
 const INK = "#1f2933";
 const MUTED = "#7b8794";
-const ACCENT = "#0f766e";
+// Kolor nagłówków: firma nadpisuje go swoim kolorem podstawowym (zwalidowanym
+// serwerowo w getOrderPdfContractor). Ta wartość zostaje dla dokumentów
+// generowanych bez danych wykonawcy.
+const ACCENT_FALLBACK = "#0f766e";
 const PAGE_MARGIN = [40, 52, 40, 46];
 const CONTENT_WIDTH = 515;
 
@@ -27,6 +30,18 @@ export function orderNumberFor(config, date = new Date()) {
     ) % 1000,
   );
   return `KW-${stamp}-${String(seed).padStart(3, "0")}`;
+}
+
+/**
+ * Nazwa pliku PDF. Numer zamówienia ma postać `KOD/2026/0001`, a ukośnik
+ * w nazwie budował w Blobie zagnieżdżone katalogi zamiast jednego pliku.
+ */
+export function orderPdfFileName(orderNo) {
+  const safe = String(orderNo ?? "")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `Zamowienie-${safe || "bez-numeru"}.pdf`;
 }
 
 const PLN = new Intl.NumberFormat("pl-PL", {
@@ -152,8 +167,30 @@ function formatDate(date) {
   return `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.${date.getFullYear()}`;
 }
 
+// `tocItem` działa w pdfmake wyłącznie na węzłach tekstowych — stąd ten kształt.
 function sectionHeading(label) {
-  return { text: label, style: "sectionHeading" };
+  return { text: label, style: "sectionHeading", tocItem: true };
+}
+
+/**
+ * Blok danych wykonawcy na stronie tytułowej. Bez danych firmy sekcja znika
+ * w całości — pusta tabelka „Nazwa: —, NIP: —" wygląda gorzej niż jej brak.
+ */
+function contractorBlock(contractor) {
+  if (!contractor) return [];
+  const rows = [
+    ["Nazwa", contractor.legalName],
+    ["Adres", contractor.address],
+    ["NIP", contractor.taxId],
+    ["E-mail", contractor.email],
+    ["Telefon", contractor.phone],
+  ].filter(([, value]) => Boolean(value));
+  if (rows.length === 0) return [];
+
+  return [
+    { text: "Wykonawca", style: "miniHeading" },
+    keyValueTable(rows, { widths: ["18%", "82%"] }),
+  ];
 }
 
 function keyValueTable(rows, { widths = ["42%", "58%"] } = {}) {
@@ -208,14 +245,18 @@ export function buildOrderDocument({
   shots,
   date = new Date(),
   quote = null,
+  // Dane rejestrowe wykonawcy z getOrderPdfContractor. Kolor jest już
+  // zwalidowany serwerowo — dokument go nie sprawdza.
+  contractor = null,
+  contractorLogo = null,
   // Logo producentów jako data URL — pdfmake w przeglądarce nie pobiera
   // obrazów z sieci samodzielnie.
   manufacturerLogos = {},
 }) {
   const orderNo = orderNumberFor(config, date);
   const order = config.order ?? {};
+  const accent = contractor?.documentAccent || ACCENT_FALLBACK;
   const heroShot = shots.find((shot) => shot.id === "orbit") ?? shots[0];
-  const structureShot = shots.find((shot) => shot.id === "structure");
   const otherShots = shots.filter((shot) => shot !== heroShot);
 
   const content = [];
@@ -224,6 +265,11 @@ export function buildOrderDocument({
   content.push(
     {
       columns: [
+        // Logo firmy wchodzi jako osobna kolumna. Bez logo zostaje kolumna
+        // zerowej szerokości, żeby pozostałe dwie nie zmieniały proporcji.
+        contractorLogo
+          ? { width: 118, image: contractorLogo, fit: [118, 44] }
+          : { width: 0, text: "" },
         [
           { text: "SPECYFIKACJA ZAMÓWIENIA", style: "eyebrow" },
           { text: "Garaż z płyt warstwowych", style: "title" },
@@ -237,6 +283,7 @@ export function buildOrderDocument({
           ],
         },
       ],
+      columnGap: contractorLogo ? 14 : 0,
       margin: [0, 0, 0, 14],
     },
   );
@@ -244,6 +291,10 @@ export function buildOrderDocument({
   if (heroShot) {
     content.push({ image: heroShot.dataUrl, width: CONTENT_WIDTH, margin: [0, 0, 0, 14] });
   }
+
+  // Wykonawca pełną szerokością, nad zamawiającym. Trzecia kolumna obok
+  // „Zamawiający | Wycena" łamałaby adres i NIP na sylaby.
+  content.push(...contractorBlock(contractor));
 
   content.push({
     columns: [
@@ -270,6 +321,11 @@ export function buildOrderDocument({
     ],
     margin: [0, 0, 0, 8],
   });
+
+  // ---------------- Spis treści ----------------
+  // Dokument ma 10+ stron, a numery zbiera pdfmake sam z węzłów `tocItem`.
+  content.push({ text: "", pageBreak: "after" });
+  content.push({ toc: { title: { text: "Spis treści", style: "sectionHeading" } } });
 
   // ---------------- 2-3. Opis obiektu, dach, wypust ----------------
   content.push({ text: "", pageBreak: "after" });
@@ -351,6 +407,20 @@ export function buildOrderDocument({
   content.push(nextSection("Konstrukcja stalowa"));
   content.push(keyValueTable(summary.structure.rows));
 
+  // Założenia obliczeniowe przed doborem przekrojów — w realnym opracowaniu
+  // zestawienie zaczyna się od tego, na czym oparto wymiarowanie.
+  content.push(nextSection("Przyjęte obciążenia i sprawdzenie przekrojów"));
+  content.push(keyValueTable(summary.statics.rows));
+  content.push(
+    dataTable({
+      headers: STATICS_CHECK_HEADERS,
+      widths: ["25%", "12%", "11%", "12%", "14%", "14%", "12%"],
+      alignRight: [1, 2, 3, 4, 5, 6],
+      rows: summary.statics.checkRows,
+    }),
+  );
+  content.push({ text: summary.statics.note, style: "footnote", margin: [0, 0, 0, 10] });
+
   content.push({ text: "Dobór przekrojów", style: "miniHeading" });
   content.push(
     dataTable({
@@ -428,14 +498,36 @@ export function buildOrderDocument({
   }
 
   // ---------------- 9. Rysunki ----------------
+  //
+  // Rysunki NIE dostają `width` — generatory rysują już w szerokości kolumny
+  // tekstu, więc jednostka SVG odpowiada punktowi PDF. Skalowanie węzła przez
+  // pdfmake (dawniej 470 → 515 pt, czyli +9,6%) unieważniałoby pole „skala".
+  const sheet = {
+    object: summary.building.rows[0][1],
+    investor: order.customerName || "—",
+    contractor: contractor?.legalName || "—",
+    date: formatDate(date),
+  };
+  const drawing = (svg, margin = 10) => ({ svg, margin: [0, 0, 0, margin] });
+  const drawingNo = (index) => `${orderNo} / R-${String(index).padStart(2, "0")}`;
+
   content.push({ text: "", pageBreak: "before" });
-  content.push(sectionHeading("Rysunki techniczne"));
-  content.push({ svg: planSvg(config, summary.model), width: CONTENT_WIDTH, margin: [0, 0, 0, 12] });
-  content.push({ svg: frameSvg(config, summary.model), width: CONTENT_WIDTH, margin: [0, 0, 0, 12] });
+  content.push(nextSection("Rysunki techniczne"));
+  content.push(drawing(planSvg(config, summary.model, { accent, sheet: { ...sheet, drawingNo: drawingNo(1) } })));
+  content.push(drawing(frameSvg(config, summary.model, { accent, sheet: { ...sheet, drawingNo: drawingNo(2) } })));
+
   content.push({ text: "", pageBreak: "before" });
-  content.push(sectionHeading("Elewacje"));
-  content.push({ svg: elevationSvg(config, summary.model, "front"), width: CONTENT_WIDTH, margin: [0, 0, 0, 12] });
-  content.push({ svg: elevationSvg(config, summary.model, "right"), width: CONTENT_WIDTH, margin: [0, 0, 0, 12] });
+  content.push(nextSection("Elewacje"));
+  // Wszystkie cztery elewacje — dotąd dokument pokazywał tylko front i prawą,
+  // więc otwory na ścianie tylnej i lewej nie były niczym udokumentowane.
+  ["front", "right", "back", "left"].forEach((wall, index) => {
+    if (index === 2) content.push({ text: "", pageBreak: "before" });
+    content.push(
+      drawing(
+        elevationSvg(config, summary.model, wall, { accent, sheet: { ...sheet, drawingNo: drawingNo(3 + index) } }),
+      ),
+    );
+  });
   content.push({
     text: "Rysunki poglądowe do celów ofertowych — nie stanowią dokumentacji wykonawczej.",
     style: "footnote",
@@ -444,7 +536,7 @@ export function buildOrderDocument({
   // ---------------- 10. Wizualizacje ----------------
   if (otherShots.length > 0) {
     content.push({ text: "", pageBreak: "before" });
-    content.push(sectionHeading("Wizualizacje"));
+    content.push(nextSection("Wizualizacje"));
     for (let index = 0; index < otherShots.length; index += 2) {
       const pair = otherShots.slice(index, index + 2);
       content.push({
@@ -463,7 +555,7 @@ export function buildOrderDocument({
 
   // ---------------- 11. Podpisy ----------------
   content.push({ text: "", pageBreak: "before" });
-  content.push(sectionHeading("Akceptacja zamówienia"));
+  content.push(nextSection("Akceptacja zamówienia"));
   content.push({
     text:
       "Konfigurator jest narzędziem wizualizacyjno-ofertowym. Wymiarowanie konstrukcji pod konkretną lokalizację " +
@@ -493,7 +585,7 @@ export function buildOrderDocument({
     pageMargins: PAGE_MARGIN,
     info: {
       title: `Zamówienie ${orderNo}`,
-      author: "Konfigurator garaży warstwowych",
+      author: contractor?.legalName || "Konfigurator garaży warstwowych",
       subject: "Specyfikacja techniczna zamówienia",
     },
     defaultStyle: { font: "Roboto", fontSize: 8.5, color: INK, lineHeight: 1.25 },
@@ -507,26 +599,28 @@ export function buildOrderDocument({
             ],
             margin: [40, 24, 40, 0],
           },
+    // W stopce dane wykonawcy zamiast dawnej diagnostyki „z/bez wizualizacji
+    // szkieletu" — to była informacja dla programisty w dokumencie dla klienta.
     footer: (currentPage, pageCount) => ({
       columns: [
-        { text: `${formatDate(date)} · ${structureShot ? "z wizualizacją szkieletu" : "bez wizualizacji szkieletu"}`, style: "runningFoot" },
+        { text: `${contractor?.legalName ? `${contractor.legalName} · ` : ""}${formatDate(date)}`, style: "runningFoot" },
         { text: `Strona ${currentPage} z ${pageCount}`, style: "runningFoot", alignment: "right" },
       ],
       margin: [40, 14, 40, 0],
     }),
     styles: {
-      eyebrow: { fontSize: 7.5, color: ACCENT, characterSpacing: 1.2, bold: true, margin: [0, 0, 0, 4] },
+      eyebrow: { fontSize: 7.5, color: accent, characterSpacing: 1.2, bold: true, margin: [0, 0, 0, 4] },
       title: { fontSize: 20, bold: true, margin: [0, 0, 0, 2] },
       subtitle: { fontSize: 10, color: MUTED },
       stamp: { fontSize: 8, color: INK, alignment: "right" },
-      sectionHeading: { fontSize: 11, bold: true, color: ACCENT, margin: [0, 6, 0, 6] },
+      sectionHeading: { fontSize: 11, bold: true, color: accent, margin: [0, 6, 0, 6] },
       miniHeading: { fontSize: 9, bold: true, margin: [0, 4, 0, 4] },
       key: { fontSize: 8, color: MUTED },
       value: { fontSize: 8.5 },
       tableHeader: { fontSize: 7.5, bold: true, color: MUTED },
       tableCell: { fontSize: 7.5 },
       totalLabel: { fontSize: 9.5, bold: true },
-      totalValue: { fontSize: 11, bold: true, color: ACCENT },
+      totalValue: { fontSize: 11, bold: true, color: accent },
       caption: { fontSize: 7.5, color: MUTED, margin: [0, 3, 0, 0] },
       footnote: { fontSize: 7, color: MUTED, italics: true },
       warning: { fontSize: 8, color: "#b45309", margin: [0, 0, 0, 8] },

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import test from "node:test";
+import Stripe from "stripe";
 import {
   DUNNING_GRACE_DAYS,
   DUNNING_RETRY_DELAYS_HOURS,
@@ -8,171 +8,84 @@ import {
   applyDunningFailure,
 } from "../src/domain/dunning";
 import { isSubscriptionAccessActive } from "../src/domain/entitlements";
-import { decidePayUStatusTransition, verifyPayUAmount } from "../src/domain/payuStatus";
-import { verifyPayUSignature } from "../src/server/payu/client";
+import { mapStripeSubscriptionStatus, verifyStripeAmount } from "../src/domain/stripeStatus";
+import { constructStripeEvent } from "../src/server/stripe/client";
+import { companySlugSchema, onboardingSchema } from "../src/domain/company";
+import { apiError } from "../src/server/apiError";
 
 const NOW = new Date("2026-08-03T12:00:00.000Z");
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 
-function withPayUEnv(
-  env: { secondKey?: string; posId?: string },
-  run: () => void,
-) {
-  const previousKey = process.env.PAYU_SECOND_KEY;
-  const previousPos = process.env.PAYU_POS_ID;
-  if (env.secondKey === undefined) delete process.env.PAYU_SECOND_KEY;
-  else process.env.PAYU_SECOND_KEY = env.secondKey;
-  if (env.posId === undefined) delete process.env.PAYU_POS_ID;
-  else process.env.PAYU_POS_ID = env.posId;
+test("webhook Stripe akceptuje poprawny podpis i odrzuca zmienione body", () => {
+  const previousKey = process.env.STRIPE_SECRET_KEY;
+  const previousSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  process.env.STRIPE_SECRET_KEY = "sk_test_123456789";
+  process.env.STRIPE_WEBHOOK_SECRET = "whsec_test_secret";
   try {
-    run();
+    const body = JSON.stringify({
+      id: "evt_test",
+      object: "event",
+      type: "checkout.session.completed",
+      data: { object: { id: "cs_test", object: "checkout.session" } },
+    });
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const header = stripe.webhooks.generateTestHeaderString({
+      payload: body,
+      secret: process.env.STRIPE_WEBHOOK_SECRET,
+    });
+    assert.equal(constructStripeEvent(body, header).id, "evt_test");
+    assert.throws(() => constructStripeEvent(`${body} `, header));
   } finally {
-    if (previousKey === undefined) delete process.env.PAYU_SECOND_KEY;
-    else process.env.PAYU_SECOND_KEY = previousKey;
-    if (previousPos === undefined) delete process.env.PAYU_POS_ID;
-    else process.env.PAYU_POS_ID = previousPos;
+    if (previousKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = previousKey;
+    if (previousSecret === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;
+    else process.env.STRIPE_WEBHOOK_SECRET = previousSecret;
   }
-}
-
-function sign(body: string, key: string, algorithm: string) {
-  return createHash(algorithm).update(body + key).digest("hex");
-}
-
-// ---------------------------------------------------------------- signature
-
-test("podpis PayU akceptuje MD5 i SHA-256 zgodnie z nagłówkiem algorithm", () => {
-  const body = JSON.stringify({ order: { extOrderId: "SUB-1", status: "COMPLETED" } });
-  withPayUEnv({ secondKey: "second-key" }, () => {
-    const md5 = sign(body, "second-key", "md5");
-    assert.equal(verifyPayUSignature(body, `signature=${md5};algorithm=MD5`), true);
-    // Brak parametru algorithm oznacza historyczny domyślny MD5.
-    assert.equal(verifyPayUSignature(body, `signature=${md5}`), true);
-
-    const sha = sign(body, "second-key", "sha256");
-    assert.equal(verifyPayUSignature(body, `signature=${sha};algorithm=SHA-256`), true);
-    assert.equal(verifyPayUSignature(body, `signature=${sha};algorithm=SHA256`), true);
-
-    // Podpis SHA-256 zadeklarowany jako MD5 musi zostać odrzucony.
-    assert.equal(verifyPayUSignature(body, `signature=${sha};algorithm=MD5`), false);
-  });
 });
 
-test("podpis PayU odrzuca brak klucza, zły podpis i nieznany algorytm", () => {
-  const body = "{}";
-  withPayUEnv({ secondKey: undefined }, () => {
-    assert.equal(verifyPayUSignature(body, "signature=abc;algorithm=MD5"), false);
-  });
-  withPayUEnv({ secondKey: "second-key" }, () => {
-    assert.equal(verifyPayUSignature(body, null), false);
-    assert.equal(verifyPayUSignature(body, "algorithm=MD5"), false);
-    assert.equal(verifyPayUSignature(body, `signature=${"0".repeat(32)};algorithm=MD5`), false);
-    const md5 = sign(body, "second-key", "md5");
-    assert.equal(verifyPayUSignature(body, `signature=${md5};algorithm=CRC32`), false);
-  });
+test("statusy Stripe mapują się na statusy dostępu aplikacji", () => {
+  assert.equal(mapStripeSubscriptionStatus("trialing"), "TRIALING");
+  assert.equal(mapStripeSubscriptionStatus("active"), "ACTIVE");
+  assert.equal(mapStripeSubscriptionStatus("past_due"), "PAST_DUE");
+  assert.equal(mapStripeSubscriptionStatus("unpaid"), "PAYMENT_FAILED");
+  assert.equal(mapStripeSubscriptionStatus("incomplete_expired"), "PAYMENT_FAILED");
+  assert.equal(mapStripeSubscriptionStatus("canceled"), "CANCELED");
+  assert.equal(mapStripeSubscriptionStatus("paused"), "SUSPENDED");
+  assert.equal(mapStripeSubscriptionStatus("incomplete"), "ONBOARDING");
 });
 
-test("podpis PayU odrzuca powiadomienie z obcego punktu sprzedaży", () => {
-  const body = "{}";
-  withPayUEnv({ secondKey: "second-key", posId: "300746" }, () => {
-    const md5 = sign(body, "second-key", "md5");
-    assert.equal(
-      verifyPayUSignature(body, `sender=checkout-300746;signature=${md5};algorithm=MD5`),
-      true,
-    );
-    assert.equal(
-      verifyPayUSignature(body, `sender=checkout-999999;signature=${md5};algorithm=MD5`),
-      false,
-    );
-  });
-});
-
-// ------------------------------------------------------- status monotonicity
-
-test("status płatności nie może się cofnąć", () => {
-  assert.deepEqual(decidePayUStatusTransition("PENDING", "COMPLETED"), { ok: true });
-  assert.deepEqual(decidePayUStatusTransition(null, "PENDING"), { ok: true });
-  // Powtórzenie tego samego statusu jest dozwolone (idempotentne).
-  assert.deepEqual(decidePayUStatusTransition("COMPLETED", "COMPLETED"), { ok: true });
-
-  // Spóźnione powiadomienie po rozliczeniu nie może zdjąć statusu COMPLETED.
-  assert.deepEqual(decidePayUStatusTransition("COMPLETED", "PENDING"), {
-    ok: false,
-    reason: "STALE_STATUS",
-  });
-  assert.deepEqual(decidePayUStatusTransition("COMPLETED", "CANCELED"), {
-    ok: false,
-    reason: "STALE_STATUS",
-  });
-  assert.deepEqual(decidePayUStatusTransition("PENDING", "NIEZNANY"), {
-    ok: false,
-    reason: "UNKNOWN_STATUS",
-  });
-});
-
-// --------------------------------------------------------- amount validation
-
-test("rozliczenie wymaga zgodnej kwoty i waluty", () => {
-  const base = { expectedAmountGross: 1400, expectedCurrency: "PLN" };
+test("rozliczenie Stripe wymaga zgodnej kwoty brutto i waluty PLN", () => {
   assert.deepEqual(
-    verifyPayUAmount({ ...base, reportedTotalAmount: "140000", reportedCurrency: "PLN" }),
+    verifyStripeAmount({ expectedGross: 1400, receivedMinor: 140000, currency: "pln" }),
     { ok: true },
   );
-  // Brak echa kwoty nie blokuje rozliczenia.
-  assert.deepEqual(verifyPayUAmount({ ...base }), { ok: true });
-
-  const mismatch = verifyPayUAmount({ ...base, reportedTotalAmount: "100" });
+  const mismatch = verifyStripeAmount({ expectedGross: 1400, receivedMinor: 100, currency: "pln" });
   assert.equal(mismatch.ok, false);
   assert.equal(mismatch.ok === false && mismatch.reason, "AMOUNT_MISMATCH");
-
-  const currency = verifyPayUAmount({
-    ...base,
-    reportedTotalAmount: "140000",
-    reportedCurrency: "EUR",
-  });
+  const currency = verifyStripeAmount({ expectedGross: 1400, receivedMinor: 140000, currency: "eur" });
   assert.equal(currency.ok, false);
   assert.equal(currency.ok === false && currency.reason, "CURRENCY_MISMATCH");
-
-  // Trial to zamówienie na 0 zł — musi przechodzić.
-  assert.deepEqual(
-    verifyPayUAmount({
-      expectedAmountGross: 0,
-      expectedCurrency: "PLN",
-      reportedTotalAmount: "0",
-    }),
-    { ok: true },
-  );
+  assert.deepEqual(verifyStripeAmount({ expectedGross: 0, receivedMinor: 0, currency: "pln" }), { ok: true });
 });
 
-// ------------------------------------------------------------------ dunning
-
-test("nieudane obciążenie przechodzi w PAST_DUE i planuje ponowienia", () => {
+test("lokalne okno karencji pozostaje ograniczone, gdy Stripe zgłosi błąd płatności", () => {
   const first = applyDunningFailure({}, NOW);
   assert.equal(first.status, "PAST_DUE");
   assert.equal(first.dunningAttempt, 1);
   assert.equal(first.exhausted, false);
-  assert.equal(
-    first.nextRetryAt?.getTime(),
-    NOW.getTime() + DUNNING_RETRY_DELAYS_HOURS[0] * HOUR_MS,
-  );
+  assert.equal(first.nextRetryAt?.getTime(), NOW.getTime() + DUNNING_RETRY_DELAYS_HOURS[0] * HOUR_MS);
   assert.equal(first.graceEndsAt.getTime(), NOW.getTime() + DUNNING_GRACE_DAYS * DAY_MS);
-
-  // Okno karencji jest zakotwiczone w pierwszej porażce i nie przedłuża się.
   const later = new Date(NOW.getTime() + 2 * DAY_MS);
   const second = applyDunningFailure(
     { dunningAttempt: first.dunningAttempt, graceEndsAt: first.graceEndsAt },
     later,
   );
-  assert.equal(second.status, "PAST_DUE");
   assert.equal(second.dunningAttempt, 2);
   assert.equal(second.graceEndsAt.getTime(), first.graceEndsAt.getTime());
-  assert.equal(
-    second.nextRetryAt?.getTime(),
-    later.getTime() + DUNNING_RETRY_DELAYS_HOURS[1] * HOUR_MS,
-  );
 });
 
-test("po wyczerpaniu ponowień subskrypcja trafia w PAYMENT_FAILED", () => {
+test("po wyczerpaniu lokalnej karencji dostęp przechodzi w PAYMENT_FAILED", () => {
   const exhausted = applyDunningFailure(
     { dunningAttempt: MAX_DUNNING_ATTEMPTS, graceEndsAt: NOW },
     NOW,
@@ -182,33 +95,44 @@ test("po wyczerpaniu ponowień subskrypcja trafia w PAYMENT_FAILED", () => {
   assert.equal(exhausted.nextRetryAt, null);
 });
 
-// ------------------------------------------------------------------- access
-
-test("brak daty końca okresu nie daje dostępu (fail-closed)", () => {
-  // Regresja: wcześniej pusty currentPeriodEnd oznaczał dostęp bez końca.
+test("brak daty końca okresu nie daje dostępu", () => {
   assert.equal(isSubscriptionAccessActive("ACTIVE", null, NOW), false);
   assert.equal(isSubscriptionAccessActive("ACTIVE", undefined, NOW), false);
   assert.equal(isSubscriptionAccessActive("TRIALING", null, NOW), false);
-
-  assert.equal(
-    isSubscriptionAccessActive("ACTIVE", new Date(NOW.getTime() + DAY_MS), NOW),
-    true,
-  );
-  assert.equal(
-    isSubscriptionAccessActive("ACTIVE", new Date(NOW.getTime() - DAY_MS), NOW),
-    false,
-  );
+  assert.equal(isSubscriptionAccessActive("ACTIVE", new Date(NOW.getTime() + DAY_MS), NOW), true);
+  assert.equal(isSubscriptionAccessActive("ACTIVE", new Date(NOW.getTime() - DAY_MS), NOW), false);
 });
 
-test("PAST_DUE zachowuje dostęp tylko do końca karencji", () => {
+test("PAST_DUE zachowuje dostęp wyłącznie do końca karencji", () => {
   const grace = new Date(NOW.getTime() + 3 * DAY_MS);
   assert.equal(isSubscriptionAccessActive("PAST_DUE", null, NOW, grace), true);
-  assert.equal(
-    isSubscriptionAccessActive("PAST_DUE", null, new Date(grace.getTime() + 1), grace),
-    false,
-  );
-  // Bez okna karencji PAST_DUE nie daje dostępu.
+  assert.equal(isSubscriptionAccessActive("PAST_DUE", null, new Date(grace.getTime() + 1), grace), false);
   assert.equal(isSubscriptionAccessActive("PAST_DUE", null, NOW), false);
-  // Karencja nie ratuje subskrypcji po wyczerpaniu ponowień.
   assert.equal(isSubscriptionAccessActive("PAYMENT_FAILED", null, NOW, grace), false);
+});
+
+test("błąd walidacji rejestracji wraca jako czytelny komunikat, nie surowy JSON", async () => {
+  const parsed = onboardingSchema.safeParse({
+    companyName: "Ab",
+    slug: "a",
+    packageCode: "GOLD",
+    billingMode: "RECURRING_MONTHLY",
+  });
+  assert.equal(parsed.success, false);
+  const response = apiError(parsed.success ? null : parsed.error, "Nie udało się utworzyć firmy.");
+  assert.equal(response.status, 400);
+  const body: any = await response.json();
+  assert.match(body.error, /^slug: /);
+  assert.doesNotMatch(body.error, /[[{]/, "komunikat nie może być zrzutem JSON-a z listą problemów");
+});
+
+test("adres konfiguratora odrzuca wartości zarezerwowane i za krótkie", () => {
+  assert.equal(companySlugSchema.safeParse("ab").success, false);
+  assert.equal(companySlugSchema.safeParse("moja firma").success, false);
+  assert.equal(companySlugSchema.safeParse("-moja-firma").success, false);
+  assert.equal(companySlugSchema.safeParse("moja--firma").success, false);
+  assert.equal(companySlugSchema.safeParse("superadmin").success, false);
+  assert.equal(companySlugSchema.safeParse("onboarding").success, false);
+  assert.equal(companySlugSchema.safeParse("moja-firma-3").success, true);
+  assert.equal(companySlugSchema.parse("  Moja-Firma  "), "moja-firma");
 });

@@ -63,9 +63,23 @@ function shoot(config, view, { whiteBackground }) {
     camera.updateProjectionMatrix();
     gl.render(scene, camera);
 
-    return view.format === "png"
-      ? gl.domElement.toDataURL("image/png")
-      : gl.domElement.toDataURL("image/jpeg", 0.92);
+    // Macierz kopiujemy TUTAJ, w tym samym bloku synchronicznym co render:
+    // zaraz potem kamera jest przestawiana pod kolejny widok, a opisy muszą
+    // trafić dokładnie w tę projekcję, w której powstał obraz.
+    const projection = {
+      viewProjection: camera.projectionMatrix.clone().multiply(camera.matrixWorldInverse).toArray(),
+      // Piksele BUFORA, nie CSS: toDataURL zwraca bitmapę w rozdzielczości
+      // podniesionej przez setPixelRatio(scale). Użycie clientWidth dawałoby
+      // błąd o czynnik `scale`, widoczny tylko na ekranach HiDPI.
+      pixelWidth: gl.domElement.width,
+      pixelHeight: gl.domElement.height,
+    };
+
+    const dataUrl =
+      view.format === "png"
+        ? gl.domElement.toDataURL("image/png")
+        : gl.domElement.toDataURL("image/jpeg", 0.92);
+    return { dataUrl, projection };
   } finally {
     if (whiteBackground) {
       scene.background = previousBackground;
@@ -80,7 +94,7 @@ function shoot(config, view, { whiteBackground }) {
  * @param {(viewMode: string) => void} options.setViewModeOnly
  * @param {(value: boolean) => void} options.setShowDimensions
  * @param {(step: { index: number, total: number, label: string }) => void} [options.onProgress]
- * @returns {Promise<Array<{ id, label, dataUrl, format }>>}
+ * @returns {Promise<Array<{ id, label, dataUrl, format, projection }>>}
  */
 export async function captureViews({
   getConfig,
@@ -162,7 +176,7 @@ export async function captureViews({
           id: view.id,
           label: view.label,
           format: view.format,
-          dataUrl: shoot(config, view, { whiteBackground: viewMode === "structure" }),
+          ...shoot(config, view, { whiteBackground: viewMode === "structure" }),
         });
         // Oddajemy klatkę przeglądarce, żeby pasek postępu się odmalował.
         await nextFrame();

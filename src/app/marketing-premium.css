@@ -1856,6 +1856,30 @@
   width: min(100%, 430px);
 }
 
+.pm-auth-legal {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 20px;
+  gap: 12px;
+  color: #74807b;
+  font-size: 9px;
+}
+
+.pm-auth-legal a,
+.pm-auth-legal button,
+.pm-summary-legal a {
+  padding: 0;
+  color: #52635d;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 .pm-auth-context {
   margin-bottom: 22px;
 }
@@ -2163,8 +2187,7 @@
 }
 
 .pm-form-section,
-.pm-order-summary,
-.pm-payu-card-shell {
+.pm-order-summary {
   margin: 0;
   padding: 25px;
   border: 1px solid var(--pm-line);
@@ -2610,70 +2633,6 @@ fieldset.pm-form-section {
   font-size: 7px;
   font-weight: 800;
   cursor: pointer;
-}
-
-.pm-payu-card-shell {
-  display: grid;
-  gap: 10px;
-}
-
-.pm-payu-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.pm-payu-label > span {
-  display: grid;
-  width: 35px;
-  height: 35px;
-  place-items: center;
-  color: var(--pm-violet);
-  border-radius: 10px;
-  background: var(--pm-violet-soft);
-}
-
-.pm-payu-label > div {
-  display: grid;
-}
-
-.pm-payu-label strong {
-  font-size: 10px;
-}
-
-.pm-payu-label small {
-  color: var(--pm-muted);
-  font-size: 8px;
-}
-
-.pm-payu-card-form {
-  display: grid;
-  min-height: 58px;
-  align-items: center;
-  padding: 8px;
-  border: 1px solid var(--pm-line-strong);
-  border-radius: 11px;
-  background: #fff;
-}
-
-.pm-payu-card-form > span {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--pm-muted);
-  font-size: 9px;
-}
-
-.pm-payu-security {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--pm-muted);
-  font-size: 8px;
-}
-
-.pm-payu-security svg {
-  color: var(--pm-green);
 }
 
 .pm-form-error {
@@ -3168,8 +3127,7 @@ fieldset.pm-form-section {
   }
 
   .pm-form-section,
-  .pm-order-summary,
-  .pm-payu-card-shell {
+  .pm-order-summary {
     padding: 19px;
   }
 

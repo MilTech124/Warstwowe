@@ -1,4 +1,5 @@
-import { CalendarDays, CreditCard, ShieldCheck } from "lucide-react";
+import { redirect } from "next/navigation";
+import { CalendarDays, CreditCard, ExternalLink, ShieldCheck } from "lucide-react";
 import { BillingManager } from "@/components/dashboard/BillingManager";
 import { EmptyState, MetricCard, PageHeading, StatusBadge } from "@/components/dashboard/DashboardBits";
 import {
@@ -8,7 +9,7 @@ import {
 } from "@/server/services/dashboardService";
 import type { PackageCode } from "@/types/saas";
 import { getAvailablePlans } from "@/server/services/planService";
-import { reconcileLatestCompanyPayment } from "@/server/services/paymentStatusService";
+import { reconcileStripeCheckout } from "@/server/services/stripePaymentService";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -20,18 +21,29 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export default async function BillingPage({ params }: { params: Promise<{ firma: string }> }) {
-  const { firma } = await params;
+export default async function BillingPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ firma: string }>;
+  searchParams: Promise<{ session_id?: string; stripe?: string }>;
+}) {
+  const [{ firma }, query] = await Promise.all([params, searchParams]);
   const access: any = await assertCompanyDashboardRole(firma, ["OWNER"]);
-
   let reconciliationFailed = false;
-  if (access?.company?._id) {
+  let reconciled = false;
+  if (query.session_id && access?.company?._id) {
     try {
-      await reconcileLatestCompanyPayment(access.company._id);
+      const result: any = await reconcileStripeCheckout(query.session_id, access.company._id);
+      reconciled = Boolean(result?.applied);
     } catch {
       reconciliationFailed = true;
     }
   }
+  // Layout policzył uprawnienia, zanim rekoncyliacja zapisała płatność, więc
+  // bez przeładowania trasy świeżo opłacone konto widziało jeszcze komunikat
+  // „płatność nie jest potwierdzona". Przy okazji `session_id` znika z adresu.
+  if (reconciled) redirect(`/${firma}/dashboard/billing?stripe=success`);
 
   const [overview, payments, plans] = await Promise.all([
     getDashboardOverview(firma),
@@ -41,25 +53,37 @@ export default async function BillingPage({ params }: { params: Promise<{ firma:
   if (!overview?.bootstrap) return null;
 
   const subscription: any = overview.subscription || {};
-  const subscriptionActive = ["ACTIVE", "TRIALING"].includes(subscription.status);
+  const subscriptionActive = Boolean(overview.bootstrap.accessActive);
   const dateFormat = new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium" });
   const currency = new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" });
+  const paymentMethod = subscription.paymentMethodLast4
+    ? `${subscription.paymentMethodBrand || "Karta"} •••• ${subscription.paymentMethodLast4}`
+    : "Zarządzaj w portalu";
 
   return (
     <>
       <PageHeading
         eyebrow="Finanse"
         title="Rozliczenia"
-        description="Zarządzaj pakietem, okresem dostępu oraz płatnościami obsługiwanymi przez PayU."
+        description="Zarządzaj pakietem, okresem dostępu, fakturami i płatnościami Stripe."
       />
 
-      {!subscriptionActive && (
+      {query.stripe === "success" && subscriptionActive && (
+        <Alert className="mb-5">
+          <AlertTitle>Płatność potwierdzona</AlertTitle>
+          <AlertDescription>
+            Dostęp do konfiguratora jest aktywny. Fakturę znajdziesz w historii płatności poniżej.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {(!subscriptionActive || reconciliationFailed) && (
         <Alert variant="destructive" className="mb-5">
-          <AlertTitle>Płatność nie jest potwierdzona</AlertTitle>
+          <AlertTitle>{reconciliationFailed ? "Nie udało się odświeżyć płatności" : "Płatność nie jest potwierdzona"}</AlertTitle>
           <AlertDescription>
             {reconciliationFailed
-              ? "Nie udało się teraz sprawdzić płatności w PayU. Spróbuj ponownie za chwilę."
-              : "Pakiet jest wybrany, ale płatność nie ma jeszcze potwierdzonego statusu COMPLETED."}
+              ? "Webhook pozostaje źródłem prawdy. Odśwież stronę za chwilę."
+              : "Dostęp zostanie aktywowany po bezpiecznym potwierdzeniu płatności przez Stripe."}
           </AlertDescription>
         </Alert>
       )}
@@ -73,18 +97,14 @@ export default async function BillingPage({ params }: { params: Promise<{ firma:
         />
         <MetricCard
           label="Dostęp ważny do"
-          value={
-            subscription.currentPeriodEnd
-              ? dateFormat.format(new Date(subscription.currentPeriodEnd))
-              : "—"
-          }
-          hint={`Status: ${subscription.status || "ACTIVE"}`}
+          value={subscription.currentPeriodEnd ? dateFormat.format(new Date(subscription.currentPeriodEnd)) : "—"}
+          hint={`Status: ${subscription.status || "ONBOARDING"}`}
           icon={<CalendarDays size={18} />}
         />
         <MetricCard
-          label="Karta PayU"
-          value={subscription.cardMask || "Brak maski"}
-          hint="Dane karty bezpiecznie przechowuje PayU"
+          label="Metoda płatności"
+          value={paymentMethod}
+          hint="Dane płatnicze bezpiecznie przechowuje Stripe"
           icon={<ShieldCheck size={18} />}
         />
       </div>
@@ -94,16 +114,15 @@ export default async function BillingPage({ params }: { params: Promise<{ firma:
           slug={firma}
           currentPackage={overview.bootstrap.packageCode as PackageCode}
           subscriptionActive={subscriptionActive}
+          allowCurrentCheckout={["ONBOARDING", "CANCELED", "EXPIRED", "PAYMENT_FAILED"].includes(subscription.status)}
+          packageChangesDisabled={["PAST_DUE", "SUSPENDED"].includes(subscription.status)}
           plans={plans}
-          cancelAtPeriodEnd={Boolean(subscription.cancelAtPeriodEnd)}
         />
 
         <Card className="gap-0 overflow-hidden py-0">
           <CardHeader className="border-b py-5">
-            <span className="text-[11px] font-semibold tracking-[0.13em] text-primary uppercase">
-              Historia
-            </span>
-            <CardTitle>Płatności</CardTitle>
+            <span className="text-[11px] font-semibold tracking-[0.13em] text-primary uppercase">Historia</span>
+            <CardTitle>Płatności i faktury</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {payments.length ? (
@@ -115,20 +134,28 @@ export default async function BillingPage({ params }: { params: Promise<{ firma:
                       <TableHead>Data</TableHead>
                       <TableHead className="text-right">Kwota brutto</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Dokument</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {payments.map((payment: any) => (
                       <TableRow key={String(payment._id)}>
-                        <TableCell className="font-medium">{payment.extOrderId}</TableCell>
+                        <TableCell className="font-medium">
+                          {payment.reference || payment.stripeInvoiceId}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-muted-foreground">
                           {dateFormat.format(new Date(payment.createdAt))}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {currency.format(Number(payment.amountGross))}
                         </TableCell>
+                        <TableCell><StatusBadge status={payment.status} /></TableCell>
                         <TableCell>
-                          <StatusBadge status={payment.status} />
+                          {payment.invoiceUrl ? (
+                            <a className="inline-flex items-center gap-1 text-sm text-primary hover:underline" href={payment.invoiceUrl} target="_blank" rel="noreferrer">
+                              Faktura <ExternalLink size={13} />
+                            </a>
+                          ) : "—"}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -139,7 +166,7 @@ export default async function BillingPage({ params }: { params: Promise<{ firma:
               <EmptyState
                 icon={<CreditCard size={27} />}
                 title="Brak historii płatności"
-                description="Potwierdzone transakcje PayU będą widoczne w tej sekcji."
+                description="Potwierdzone transakcje Stripe będą widoczne w tej sekcji."
               />
             )}
           </CardContent>

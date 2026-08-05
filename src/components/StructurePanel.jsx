@@ -5,8 +5,9 @@ import { useMemo } from "react";
 import { AlertTriangle, Weight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Field, Select } from "@/components/configurator-ui/Field";
-import { formatKg, formatNumber, profileTable } from "@/lib/projectSummary";
+import { formatKg, formatNumber, profileTable, staticsSection, utilisationText } from "@/lib/projectSummary";
 import { steelBom } from "@/lib/bom/steelBom";
+import { roleLabel } from "@/config/steelProfiles";
 import { buildStructure } from "@/scene/structure/buildStructure";
 import { STRUCTURE_CLASSES } from "@/scene/structure/classes";
 import { structureInputs, structureSignature } from "@/scene/structure/inputs";
@@ -27,6 +28,7 @@ export function StructurePanel({ config, updateStructure }) {
   const model = useMemo(() => buildStructure(inputs), [signature]);
   const bom = useMemo(() => steelBom(model), [model]);
   const profiles = useMemo(() => profileTable(model.plan.spec, model.members), [model]);
+  const statics = useMemo(() => staticsSection(model), [model]);
 
   const spec = model.plan.spec;
   const structureClass = STRUCTURE_CLASSES[model.plan.structureClass];
@@ -65,7 +67,10 @@ export function StructurePanel({ config, updateStructure }) {
             </option>
           ))}
         </Select>
-        <small className="structure-hint">Koryguje wyłącznie rozstaw płatwi. Wartość orientacyjna do ofertowania.</small>
+        {/* Nieaktualna była poprzednia wersja tej podpowiedzi („koryguje wyłącznie
+            rozstaw płatwi"). Od czasu doboru ze zginania strefa wchodzi do
+            obciążenia obliczeniowego, więc zmienia też PRZEKRÓJ — docs §3.1a. */}
+        <small className="structure-hint">Wchodzi do obciążenia obliczeniowego — zmienia rozstaw płatwi i przekroje.</small>
       </Field>
 
       <div className="structure-metrics">
@@ -118,6 +123,54 @@ export function StructurePanel({ config, updateStructure }) {
         <small className="structure-hint">
           Gatunek stali: {spec.steelGrade}. Blachy podstawy {formatNumber(spec.plateThicknessM * 1000, 0)} mm, kotwy M12 — 4 szt. na stopę.
         </small>
+      </div>
+
+      {/* Założenia obliczeniowe. Te liczby powstawały już wcześniej w spec.js,
+          ale nigdzie nie docierały — nie było jak sprawdzić, na czym oparto dobór.
+          Kafelki stoją jako osobny wiersz panelu (jak rozstawy wyżej), więc odstęp
+          daje `gap` z .structure-panel — bez dokładania reguły CSS. */}
+      <div className="structure-metrics">
+        <Metric
+          label="Śnieg — grunt"
+          value={`${formatNumber(statics.loads.skKnM2)} kN/m²`}
+          note={`sk, strefa ${statics.loads.snowZone}`}
+        />
+        <Metric
+          label="Śnieg — połać"
+          value={`${formatNumber(statics.loads.roofSnowKnM2)} kN/m²`}
+          note={`μ₁ = ${formatNumber(statics.loads.shapeCoefficient)}`}
+        />
+        <Metric
+          label="Obliczeniowe"
+          value={`${formatNumber(statics.loads.designLoadKnM2)} kN/m²`}
+          note={`${formatNumber(statics.loads.gammaG)}·G + ${formatNumber(statics.loads.gammaQ)}·S`}
+        />
+      </div>
+
+      <div className="structure-profiles">
+        <h3>Sprawdzenie przekrojów</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Element</th>
+              <th>Rozpiętość</th>
+              <th>Wytężenie</th>
+            </tr>
+          </thead>
+          <tbody>
+            {statics.checks.map((check) => (
+              <tr key={`${check.role}-${check.profileId}`}>
+                <td>
+                  <span className="profile-label">{check.profileLabel}</span>
+                  <small>{roleLabel(check.role)}</small>
+                </td>
+                <td>{`${formatNumber(check.spanM)} m`}</td>
+                <td>{utilisationText(check)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <small className="structure-hint">{statics.note}</small>
       </div>
 
       {model.warnings.length > 0 && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Check, ChevronRight, Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useConfiguratorStore, useConfiguratorStoreApi } from "@/store/configuratorStore";
@@ -18,13 +19,14 @@ export function OrderFooter() {
   const [formOpen, setFormOpen] = useState(false);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
-  const [consent, setConsent] = useState(false);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const access = useConfiguratorAccess();
   const storeApi = useConfiguratorStoreApi();
   const order = useConfiguratorStore((state) => state.config.order);
   const updateOrder = useConfiguratorStore((state) => state.updateOrder);
   const busy = Boolean(status);
+  const privacyProfile = access.company.privacyProfile;
 
   async function handleSubmitOrder() {
     setError(null);
@@ -35,7 +37,12 @@ export function OrderFooter() {
       if (!currentOrder.customerName || !currentOrder.phone || !currentOrder.email) {
         throw new Error("Uzupełnij nazwę klienta, telefon i e-mail.");
       }
-      if (!consent) throw new Error("Potwierdź zgodę na obsługę danych zamówienia.");
+      if (!privacyProfile) {
+        throw new Error("Firma nie opublikowała wymaganej informacji o przetwarzaniu danych.");
+      }
+      if (!privacyAcknowledged) {
+        throw new Error("Potwierdź zapoznanie się z informacją o przetwarzaniu danych.");
+      }
       const response = await fetch(`/api/public/companies/${access.company.slug}/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -47,7 +54,8 @@ export function OrderFooter() {
             email: currentOrder.email,
           },
           notes: currentOrder.notes,
-          consent,
+          privacyNoticeAccepted: true,
+          privacyNoticeVersion: privacyProfile.noticeVersion,
           settingsVersion: access.settings.version,
           configuration: store.config,
         }),
@@ -98,16 +106,38 @@ export function OrderFooter() {
               onChange={(event) => updateOrder({ notes: event.target.value })}
             />
           </label>
-          <label className="order-consent">
-            <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>Zgadzam się na przekazanie danych firmie w celu przygotowania i obsługi zamówienia.</span>
-          </label>
+          {privacyProfile ? (
+            <label className="order-consent">
+              <input
+                type="checkbox"
+                checked={privacyAcknowledged}
+                onChange={(event) => setPrivacyAcknowledged(event.target.checked)}
+              />
+              <span>
+                Potwierdzam, że zapoznałem(-am) się z{" "}
+                <Link href={`/${access.company.slug}/polityka-prywatnosci`} target="_blank">
+                  informacją o przetwarzaniu danych
+                </Link>
+                .
+              </span>
+            </label>
+          ) : (
+            <p className="order-error" role="status">
+              Wysyłanie zamówień jest czasowo niedostępne, ponieważ firma nie opublikowała danych
+              administratora.
+            </p>
+          )}
         </div>
       )}
 
       {error && <p className="order-error" role="alert">{error}</p>}
 
-      <button type="button" className="order-submit" onClick={handleSubmitOrder} disabled={busy || Boolean(receipt)}>
+      <button
+        type="button"
+        className="order-submit"
+        onClick={handleSubmitOrder}
+        disabled={busy || Boolean(receipt) || !privacyProfile}
+      >
         {busy ? <Loader2 className="h-4 w-4 order-spinner" /> : receipt ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
         <span>{receipt ? `Zapisano ${receipt.number}` : busy ? status.label : "Wyślij zamówienie"}</span>
       </button>

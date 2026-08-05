@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
 import { CompanyMembership } from "@/server/db/models";
 import { sendTransactionalEmail } from "@/server/email/smtp";
-import { applicationUrl } from "@/server/payu/client";
+import { applicationUrl } from "@/server/stripe/client";
 import { getConfiguratorBootstrap } from "@/server/services/companyService";
 import { writeAudit } from "@/server/audit";
 import { apiError } from "@/server/apiError";

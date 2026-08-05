@@ -91,9 +91,14 @@ export async function POST(
       );
     }
 
+    // Nazwa pliku pochodzi od klienta, więc sanityzujemy ją TUTAJ, niezależnie od
+    // tego, co robi generator. Ukośnik w `file.name` budował w Blobie dowolnie
+    // zagnieżdżoną ścieżkę zamiast jednego pliku w katalogu zamówienia.
+    const safeName = file.name.replace(/[^\w.-]+/g, "-").slice(-80) || "zamowienie.pdf";
+
     const previousPath = order.pdfBlobPath as string | undefined;
     const blob = await put(
-      `orders/${bootstrap.company.id}/${orderId}/${file.name}`,
+      `orders/${bootstrap.company.id}/${orderId}/${safeName}`,
       file,
       { access: "private", addRandomSuffix: true, contentType: "application/pdf" },
     );

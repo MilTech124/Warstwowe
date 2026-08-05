@@ -152,7 +152,7 @@ export default async function HomePage() {
             </div>
             <div className="pm-hero-proof" aria-label="Najważniejsze korzyści">
               <span><BadgeCheck size={16} /> Bez wdrożenia IT</span>
-              <span><ShieldCheck size={16} /> Bezpieczne płatności PayU</span>
+              <span><ShieldCheck size={16} /> Bezpieczne płatności Stripe</span>
               <span><Zap size={16} /> Start w kilka minut</span>
             </div>
           </div>
@@ -437,7 +437,7 @@ export default async function HomePage() {
                 <span className="pm-showcase-type"><ShieldCheck size={14} /> Superadmin SaaS</span>
                 <h3>Pełna kontrola nad firmami, pakietami i katalogiem.</h3>
                 <p>Operacyjne centrum platformy z audytem i stanem płatności.</p>
-                <div className="pm-showcase-tags"><span>Tenanci</span><span>Pakiety</span><span>PayU</span></div>
+                <div className="pm-showcase-tags"><span>Tenanci</span><span>Pakiety</span><span>Stripe</span></div>
               </div>
             </article>
           </div>
@@ -592,6 +592,8 @@ export default async function HomePage() {
             <Link href="/logowanie">Logowanie</Link>
             <Link href="/rejestracja">Rejestracja</Link>
             <Link href="/demo">Demo</Link>
+            <Link href="/polityka-prywatnosci">Prywatność</Link>
+            <Link href="/polityka-cookies">Cookies</Link>
           </div>
         </div>
       </footer>

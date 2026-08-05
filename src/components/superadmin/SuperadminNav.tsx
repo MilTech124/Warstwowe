@@ -9,7 +9,7 @@ const items = [
   { href: "/superadmin/companies", label: "Firmy", description: "Dostęp i pakiety", icon: Building2 },
   { href: "/superadmin/plans", label: "Pakiety", description: "Ceny i funkcje", icon: PackageOpen },
   { href: "/superadmin/catalog", label: "Katalog", description: "Płyty i bramy", icon: Boxes },
-  { href: "/superadmin/billing", label: "Płatności", description: "PayU i automatyzacja", icon: CreditCard },
+  { href: "/superadmin/billing", label: "Płatności", description: "Stripe Billing", icon: CreditCard },
   { href: "/superadmin/audit", label: "Audyt", description: "Historia operacji", icon: ScrollText },
 ];
 

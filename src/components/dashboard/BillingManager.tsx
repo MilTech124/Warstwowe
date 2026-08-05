@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Loader2 } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PACKAGE_DEFINITIONS } from "@/domain/plans";
 import type { PackageDefinition } from "@/domain/plans";
@@ -23,35 +23,35 @@ export function BillingManager({
   slug,
   currentPackage,
   subscriptionActive,
-  cancelAtPeriodEnd = false,
+  allowCurrentCheckout = false,
+  packageChangesDisabled = false,
   plans = Object.values(PACKAGE_DEFINITIONS),
 }: {
   slug: string;
   currentPackage: PackageCode;
   subscriptionActive: boolean;
-  cancelAtPeriodEnd?: boolean;
-  /** Defaults to the static table; the billing page passes DB-backed plans. */
+  allowCurrentCheckout?: boolean;
+  packageChangesDisabled?: boolean;
   plans?: PackageDefinition[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<PackageCode | null>(null);
-  const [cancelBusy, setCancelBusy] = useState(false);
-
-  async function patch(body: Record<string, unknown>) {
-    const response = await fetch(`/api/companies/${slug}/subscription`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || "Operacja nie powiodła się.");
-    return result;
-  }
+  const [portalBusy, setPortalBusy] = useState(false);
 
   async function schedule(packageCode: PackageCode) {
     setBusy(packageCode);
     try {
-      const result = await patch({ action: "CHANGE_PACKAGE", packageCode });
+      const response = await fetch(`/api/companies/${slug}/subscription`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "CHANGE_PACKAGE", packageCode }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Operacja nie powiodła się.");
+      if (result.checkoutUrl) {
+        window.location.assign(result.checkoutUrl);
+        return;
+      }
       toast.success(result.message || "Zmiana pakietu została zaplanowana.");
       router.refresh();
     } catch (error) {
@@ -61,21 +61,19 @@ export function BillingManager({
     }
   }
 
-  // Previously this ignored response.ok, never set a busy flag and never
-  // refreshed — so the button kept showing the old state after a cancel.
-  async function cancellation(action: "CANCEL" | "RESUME") {
-    setCancelBusy(true);
+  async function openPortal() {
+    setPortalBusy(true);
     try {
-      const result = await patch({ action });
-      toast.success(
-        result.message
-          || (action === "CANCEL" ? "Odnowienia zostały wstrzymane." : "Odnowienia przywrócone."),
-      );
-      router.refresh();
+      const response = await fetch(`/api/companies/${slug}/billing-portal`, { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.url) {
+        throw new Error(result.error || "Nie udało się otworzyć portalu Stripe.");
+      }
+      window.location.assign(result.url);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Nie udało się zmienić subskrypcji.");
+      toast.error(error instanceof Error ? error.message : "Nie udało się otworzyć portalu Stripe.");
     } finally {
-      setCancelBusy(false);
+      setPortalBusy(false);
     }
   }
 
@@ -120,15 +118,11 @@ export function BillingManager({
               <Button
                 variant={current ? "secondary" : "outline"}
                 className="w-full"
-                disabled={current || Boolean(busy)}
+                disabled={packageChangesDisabled || (current && !allowCurrentCheckout) || Boolean(busy)}
                 onClick={() => schedule(plan.code)}
               >
-                {busy === plan.code ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <>
-                    Wybierz <ArrowRight size={14} />
-                  </>
+                {busy === plan.code ? <Loader2 size={15} className="animate-spin" /> : (
+                  <>{current && allowCurrentCheckout ? "Dokończ płatność" : "Wybierz"} <ArrowRight size={14} /></>
                 )}
               </Button>
             </article>
@@ -138,19 +132,11 @@ export function BillingManager({
 
       <CardFooter className="flex-wrap justify-between gap-3 border-t pt-5">
         <span className="text-xs text-muted-foreground">
-          {cancelAtPeriodEnd
-            ? "Subskrypcja jest zaplanowana do zakończenia."
-            : "Możesz zakończyć odnowienia bez utraty bieżącego okresu."}
+          Faktury, dane firmy, metoda płatności i anulowanie są dostępne w portalu Stripe.
         </span>
-        <Button
-          variant="link"
-          size="sm"
-          className="px-0"
-          disabled={cancelBusy}
-          onClick={() => cancellation(cancelAtPeriodEnd ? "RESUME" : "CANCEL")}
-        >
-          {cancelBusy && <Loader2 size={14} className="animate-spin" />}
-          {cancelAtPeriodEnd ? "Przywróć odnowienie" : "Anuluj z końcem okresu"}
+        <Button variant="link" size="sm" className="px-0" disabled={portalBusy} onClick={openPortal}>
+          {portalBusy ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+          Zarządzaj w Stripe
         </Button>
       </CardFooter>
     </Card>

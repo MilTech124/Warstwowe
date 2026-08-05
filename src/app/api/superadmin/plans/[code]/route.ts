@@ -5,6 +5,10 @@ import { writeAudit } from "@/server/audit";
 import { Plan, PlanVersion } from "@/server/db/models";
 import { FEATURE_KEYS, PACKAGE_CODES } from "@/types/saas";
 import { apiError } from "@/server/apiError";
+import {
+  provisionStripePlanCatalog,
+  stripeEnvironment,
+} from "@/server/stripe/client";
 
 const planPatchSchema = z.object({
   monthlyGross: z.number().int().positive(),
@@ -27,6 +31,20 @@ export async function PATCH(
     if (!before) return NextResponse.json({ error: "Pakiet nie istnieje." }, { status: 404 });
 
     const nextVersion = Number(before.version || 1) + 1;
+    // Stripe prices are immutable. Provision the complete next catalog before
+    // publishing locally so a Stripe outage cannot leave an unusable plan.
+    const stripeCatalogForEnvironment = await provisionStripePlanCatalog({
+      code: packageCode,
+      name: before.name,
+      version: nextVersion,
+      monthlyGross: input.monthlyGross,
+      prepaidSixMonthsGross: input.prepaidSixMonthsGross,
+      stripeCatalog: before.stripeCatalog,
+    });
+    const stripeCatalog = {
+      ...(before.stripeCatalog || {}),
+      [stripeEnvironment()]: stripeCatalogForEnvironment,
+    };
     await PlanVersion.create({
       planCode: before.code,
       version: before.version || 1,
@@ -34,6 +52,7 @@ export async function PATCH(
       prepaidSixMonthsGross: before.prepaidSixMonthsGross,
       seatLimit: before.seatLimit,
       features: before.features,
+      stripeCatalog: before.stripeCatalog || {},
       effectiveFrom: before.updatedAt || before.createdAt,
       createdBy: identity.userId,
     }).catch((error: any) => {
@@ -41,7 +60,7 @@ export async function PATCH(
     });
     const plan = await Plan.findOneAndUpdate(
       { code: packageCode },
-      { $set: { ...input, version: nextVersion } },
+      { $set: { ...input, version: nextVersion, stripeCatalog } },
       { new: true },
     ).lean();
     await writeAudit({

@@ -3,21 +3,34 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, Check, Layers3, ShieldCheck } from "lucide-react";
 import { OnboardingForm } from "@/components/auth/OnboardingForm";
 import { getRequestIdentity } from "@/server/auth";
-import { findCompanyForUser } from "@/server/services/companyService";
+import { findRegistrationForUser } from "@/server/services/companyService";
 import { getAvailablePlans } from "@/server/services/planService";
 import "../marketing-premium.css";
+
+export const dynamic = "force-dynamic";
 
 export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string }>;
+  searchParams: Promise<{ plan?: string; stripe?: string }>;
 }) {
-  const { plan } = await searchParams;
+  const { plan, stripe } = await searchParams;
   const identity = await getRequestIdentity();
-  if (identity.userId) {
-    const existingCompany: any = await findCompanyForUser(identity.userId);
-    if (existingCompany?.slug) redirect(`/${existingCompany.slug}/dashboard`);
+  // Tylko ukończona rejestracja trafia do panelu. Firma z subskrypcją w
+  // statusie ONBOARDING (porzucony lub anulowany Checkout) zostaje tutaj,
+  // z wypełnionym formularzem, żeby dało się dokończyć albo poprawić dane.
+  const registration = identity.userId ? await findRegistrationForUser(identity.userId) : null;
+  if (registration?.finished && registration.company?.slug) {
+    redirect(`/${registration.company.slug}/dashboard`);
   }
+  const pending = registration?.isOwner
+    ? {
+        companyName: String(registration.company.displayName || ""),
+        slug: String(registration.company.slug || ""),
+        packageCode: registration.subscription?.packageCode as string | undefined,
+        billingMode: registration.subscription?.billingMode as string | undefined,
+      }
+    : undefined;
   const plans = await getAvailablePlans();
 
   return (
@@ -50,7 +63,12 @@ export default async function OnboardingPage({
           <h1>Skonfiguruj przestrzeń swojej firmy.</h1>
           <p>Wybierz adres konfiguratora, pakiet i wygodny sposób rozliczenia.</p>
         </div>
-        <OnboardingForm initialPlan={plan} plans={plans} />
+        <OnboardingForm
+          initialPlan={plan}
+          plans={plans}
+          pending={pending}
+          checkoutCancelled={stripe === "cancelled"}
+        />
       </section>
     </main>
   );

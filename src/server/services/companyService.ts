@@ -9,6 +9,11 @@ import {
   WINDOW_MODELS,
 } from "@/config/catalog";
 import { FINISH_PRESETS } from "@/config/materialFinishes";
+import {
+  DEMO_PRIVACY_PROFILE,
+  emptyPrivacyProfile,
+  isCompletePrivacyProfile,
+} from "@/config/legal";
 import { PACKAGE_DEFINITIONS } from "@/domain/plans";
 import { resolveEntitlements } from "@/domain/entitlements";
 import { getPublishedPriceList } from "@/server/services/priceListService";
@@ -27,6 +32,7 @@ import {
   Subscription,
 } from "@/server/db/models";
 import type {
+  CompanyPrivacyProfile,
   CompanyConfiguratorSettings,
   ConfiguratorBootstrap,
   FeatureKey,
@@ -193,6 +199,7 @@ export function demoBootstrap(): ConfiguratorBootstrap {
         supportPhone: "+48 000 000 000",
         ...demoState.branding,
       },
+      privacyProfile: demoState.privacyProfile || DEMO_PRIVACY_PROFILE,
     },
     packageCode: "DIAMOND",
     accessActive: true,
@@ -202,6 +209,23 @@ export function demoBootstrap(): ConfiguratorBootstrap {
     settings: { ...DEFAULT_SETTINGS, ...demoState.settings },
     catalog: staticCatalog(),
   };
+}
+
+function publicPrivacyProfile(
+  value: unknown,
+  fallbackVersion = 1,
+): CompanyPrivacyProfile | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const profile = emptyPrivacyProfile({
+    controllerName: String(source.controllerName || ""),
+    address: String(source.address || ""),
+    taxId: String(source.taxId || ""),
+    privacyEmail: String(source.privacyEmail || ""),
+    privacyPhone: source.privacyPhone ? String(source.privacyPhone) : null,
+    noticeVersion: Number(source.noticeVersion || fallbackVersion || 1),
+  });
+  return isCompletePrivacyProfile(profile) ? profile : null;
 }
 
 function settingsFromDocument(document: Record<string, unknown> | null): CompanyConfiguratorSettings {
@@ -383,6 +407,40 @@ export async function findCompanyForUser(clerkUserId: string) {
   }
 }
 
+/**
+ * Rejestracja jest ukończona dopiero wtedy, gdy subskrypcja opuściła status
+ * ONBOARDING. Do tego momentu właściciel musi móc wrócić na `/onboarding`,
+ * żeby poprawić nazwę, adres lub pakiet — inaczej porzucony Checkout Stripe
+ * blokuje slug na zawsze, bez drogi powrotnej. Osoba zaproszona do cudzej
+ * firmy nie przechodzi rejestracji, więc zawsze jest „ukończona".
+ */
+export async function findRegistrationForUser(clerkUserId: string) {
+  try {
+    if (!(await connectMongo())) return null;
+    const ownedCompany: any = await Company.findOne({ ownerClerkUserId: clerkUserId }).lean();
+    if (ownedCompany) {
+      const subscription: any = await Subscription.findOne({ companyId: ownedCompany._id }).lean();
+      return {
+        company: ownedCompany,
+        subscription,
+        isOwner: true,
+        finished: Boolean(subscription) && subscription.status !== "ONBOARDING",
+      };
+    }
+
+    const membership: any = await CompanyMembership.findOne({
+      clerkUserId,
+      status: "ACTIVE",
+    }).lean();
+    if (!membership) return null;
+    const company: any = await Company.findById(membership.companyId).lean();
+    if (!company) return null;
+    return { company, subscription: null, isOwner: false, finished: true };
+  } catch {
+    return null;
+  }
+}
+
 export async function getConfiguratorBootstrap(slug: string): Promise<ConfiguratorBootstrap | null> {
   if (slug === "demo" && demoModeEnabled()) {
     return demoBootstrap();
@@ -437,6 +495,10 @@ export async function getConfiguratorBootstrap(slug: string): Promise<Configurat
     planFeatures: (planDocument as any)?.features,
     seatLimit: (planDocument as any)?.seatLimit,
   });
+  const privacyProfile = publicPrivacyProfile(
+    (settingsDocument as any)?.privacyProfile,
+    Number((settingsDocument as any)?.publishedVersion || 1),
+  );
 
   return {
     company: {
@@ -450,6 +512,7 @@ export async function getConfiguratorBootstrap(slug: string): Promise<Configurat
         supportEmail: (company as any).branding?.supportEmail || null,
         supportPhone: (company as any).branding?.supportPhone || null,
       },
+      privacyProfile,
     },
     packageCode,
     accessActive: entitlements.accessActive,
@@ -499,6 +562,9 @@ export async function getCompanySettingsEditorBootstrap(
       company: {
         ...publishedBootstrap.company,
         branding: { ...publishedBootstrap.company.branding, ...draft.branding },
+        privacyProfile: draft.privacyProfile
+          || publishedBootstrap.company.privacyProfile
+          || DEMO_PRIVACY_PROFILE,
       },
       settings: draftSettings,
       accessActive: draftSettings.manuallyEnabled && publishedBootstrap.accessActive,
@@ -512,6 +578,7 @@ export async function getCompanySettingsEditorBootstrap(
   const document: any = await CompanySettings.findOne({
     companyId: publishedBootstrap.company.id,
   }).lean();
+  const company: any = await Company.findById(publishedBootstrap.company.id).lean();
   const draft = document?.draft || {};
   const draftSettings = {
     ...publishedBootstrap.settings,
@@ -520,11 +587,23 @@ export async function getCompanySettingsEditorBootstrap(
     published: publishedBootstrap.settings.published,
   };
   const available = publishedBootstrap.availableCapabilities || publishedBootstrap.capabilities;
+  const prefilledPrivacy = emptyPrivacyProfile({
+    controllerName: company?.billing?.legalName || company?.displayName || "",
+    address: company?.billing?.address || "",
+    taxId: company?.billing?.taxId || "",
+    privacyEmail: company?.billing?.email || company?.branding?.supportEmail || "",
+    privacyPhone: company?.branding?.supportPhone || null,
+    noticeVersion: Number(document?.version || 1),
+  });
+  const draftPrivacy = draft.privacyProfile
+    ? emptyPrivacyProfile(draft.privacyProfile)
+    : publishedBootstrap.company.privacyProfile || prefilledPrivacy;
   return {
     ...publishedBootstrap,
     company: {
       ...publishedBootstrap.company,
       branding: { ...publishedBootstrap.company.branding, ...(draft.branding || {}) },
+      privacyProfile: draftPrivacy,
     },
     settings: draftSettings,
     accessActive: draftSettings.manuallyEnabled && publishedBootstrap.accessActive,

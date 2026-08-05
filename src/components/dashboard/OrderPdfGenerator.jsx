@@ -10,10 +10,25 @@ import { generateOrderPdf } from "@/lib/pdf/generateOrderPdf";
 import { useConfiguratorAccess } from "@/configurator/ConfiguratorContext";
 import { useConfiguratorStoreApi } from "@/store/configuratorStore";
 
+/**
+ * Adnotacja jest potrzebna, bo z samej wartości domyślnej TypeScript wywnioskowałby
+ * dla `contractor` typ `null` i odrzucił obiekt przekazywany ze strony serwerowej.
+ *
+ * @param {{
+ *   slug: string,
+ *   orderId: string,
+ *   quote?: object | null,
+ *   contractor?: object | null,
+ *   hasPdf?: boolean,
+ *   autoStart?: boolean,
+ *   portalId?: string,
+ * }} props
+ */
 export function OrderPdfGenerator({
   slug,
   orderId,
   quote,
+  contractor = null,
   hasPdf,
   autoStart = false,
   portalId = "order-preview-pdf-actions",
@@ -44,6 +59,7 @@ export function OrderPdfGenerator({
         setQualityOverride: store.setQualityOverride,
         onProgress: setStatus,
         quote,
+        contractor,
         catalog,
         download: false,
       });
@@ -66,7 +82,10 @@ export function OrderPdfGenerator({
       setStatus(null);
       toast.error(error instanceof Error ? error.message : "Nie udało się wygenerować PDF.");
     }
-  }, [autoStart, catalog, orderId, pathname, quote, router, slug, status, storeApi]);
+    // `contractor` i `quote` to obiekty z serwera — nowa referencja przy każdym
+    // renderze. Tu jest to nieszkodliwe: `generate` odpala się z kliknięcia albo
+    // z efektu zabezpieczonego `autoStarted`, więc zmiana referencji nic nie robi.
+  }, [autoStart, catalog, contractor, orderId, pathname, quote, router, slug, status, storeApi]);
 
   useEffect(() => {
     if (!autoStart || autoStarted.current || !portalTarget) return;

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import {
   ArrowRight,
@@ -15,10 +16,10 @@ import {
   LockKeyhole,
   Sparkles,
 } from "lucide-react";
+import { companySlugSchema } from "@/domain/company";
 import { PACKAGE_DEFINITIONS } from "@/domain/plans";
 import type { PackageDefinition } from "@/domain/plans";
 import type { BillingMode, PackageCode } from "@/types/saas";
-import { PayUSecureCard, type PayUCardHandle } from "@/components/auth/PayUSecureCard";
 
 const planDescriptions: Record<PackageCode, string> = {
   STANDARD: "Podstawowy konfigurator i zamówienia",
@@ -55,24 +56,38 @@ const billingOptions: Array<{
 export function OnboardingForm({
   initialPlan,
   plans = Object.values(PACKAGE_DEFINITIONS),
+  pending,
+  checkoutCancelled = false,
 }: {
   initialPlan?: string;
   plans?: PackageDefinition[];
+  /** Firma z poprzedniej, nieukończonej próby rejestracji. */
+  pending?: {
+    companyName: string;
+    slug: string;
+    packageCode?: string;
+    billingMode?: string;
+  };
+  checkoutCancelled?: boolean;
 }) {
   const authEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
   const { isSignedIn } = useAuth();
   const { user } = useUser();
-  const [companyName, setCompanyName] = useState("");
-  const [slug, setSlug] = useState("");
+  const [companyName, setCompanyName] = useState(pending?.companyName || "");
+  const [slug, setSlug] = useState(pending?.slug || "");
   const [packageCode, setPackageCode] = useState<PackageCode>(
-    initialPlan && initialPlan in PACKAGE_DEFINITIONS ? initialPlan as PackageCode : "GOLD",
+    pending?.packageCode && pending.packageCode in PACKAGE_DEFINITIONS
+      ? pending.packageCode as PackageCode
+      : initialPlan && initialPlan in PACKAGE_DEFINITIONS ? initialPlan as PackageCode : "GOLD",
   );
-  const [billingMode, setBillingMode] = useState<BillingMode>("RECURRING_MONTHLY");
-  const [cardHandle, setCardHandle] = useState<PayUCardHandle | null>(null);
+  const [billingMode, setBillingMode] = useState<BillingMode>(
+    billingOptions.some((option) => option.code === pending?.billingMode)
+      ? pending!.billingMode as BillingMode
+      : "RECURRING_MONTHLY",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const onCardReady = useCallback((handle: PayUCardHandle | null) => setCardHandle(handle), []);
   const selectedPlan = plans.find((plan) => plan.code === packageCode) || PACKAGE_DEFINITIONS[packageCode];
   const amount = billingMode === "PREPAID_SIX_MONTHS"
     ? selectedPlan.prepaidSixMonthsGross
@@ -101,30 +116,30 @@ export function OnboardingForm({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    // Ten sam schemat co na serwerze: bez tego pusty lub zarezerwowany adres
+    // wracał dopiero jako 400 z API, już po utworzeniu sesji płatności.
+    const validatedSlug = companySlugSchema.safeParse(slug || slugSuggestion);
+    if (!validatedSlug.success) {
+      setError(validatedSlug.error.issues[0]?.message || "Podaj poprawny adres konfiguratora.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      let card: { token?: string; mask?: string } = {};
-      if (billingMode === "RECURRING_MONTHLY") {
-        if (!cardHandle) throw new Error("Bezpieczny formularz karty PayU nie jest gotowy.");
-        card = await cardHandle.tokenize();
-      }
       const response = await fetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           companyName,
-          slug: slug || slugSuggestion,
+          slug: validatedSlug.data,
           packageCode,
           billingMode,
-          cardToken: card.token,
-          cardMask: card.mask,
         }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Nie udało się założyć firmy.");
-      if (result.redirectUri) {
-        window.location.assign(result.redirectUri);
+      if (result.checkoutUrl) {
+        window.location.assign(result.checkoutUrl);
         return;
       }
       window.location.assign(`/${result.slug}/dashboard`);
@@ -154,6 +169,21 @@ export function OnboardingForm({
   return (
     <form className="pm-onboarding-form" onSubmit={submit}>
       <div className="pm-onboarding-main">
+        {(checkoutCancelled || pending) && (
+          <div className="pm-setup-notice" role="status">
+            <CreditCard size={20} />
+            <div>
+              <strong>
+                {checkoutCancelled ? "Płatność została przerwana" : "Dokończ rozpoczętą rejestrację"}
+              </strong>
+              <p>
+                Twoja firma czeka na potwierdzenie płatności. Możesz poprawić nazwę,
+                adres konfiguratora lub pakiet i ponowić płatność.
+              </p>
+            </div>
+          </div>
+        )}
+
         <section className="pm-form-section">
           <div className="pm-form-section-title">
             <span><Building2 size={18} /></span>
@@ -262,7 +292,13 @@ export function OnboardingForm({
           </div>
         </fieldset>
 
-        {billingMode === "RECURRING_MONTHLY" && <PayUSecureCard onReady={onCardReady} />}
+        <div className="pm-setup-notice" role="status">
+          <CreditCard size={20} />
+          <div>
+            <strong>Bezpieczna płatność Stripe</strong>
+            <p>Dane karty, adres i NIP podasz na szyfrowanej stronie Stripe po zatwierdzeniu formularza.</p>
+          </div>
+        </div>
         {error && <p className="pm-form-error" role="alert">{error}</p>}
       </div>
 
@@ -305,7 +341,7 @@ export function OnboardingForm({
         ) : (
           <div className="pm-trial-summary pm-payment-summary">
             <CreditCard size={17} />
-            <span><strong>Płatność przez PayU</strong><small>Dostęp po potwierdzeniu płatności</small></span>
+            <span><strong>Płatność przez Stripe</strong><small>Dostęp po potwierdzeniu płatności</small></span>
           </div>
         )}
 
@@ -319,7 +355,9 @@ export function OnboardingForm({
 
         <p className="pm-summary-legal">
           <LockKeyhole size={13} />
-          Kontynuując, akceptujesz warunki usługi i politykę prywatności.
+          Kontynuując, akceptujesz warunki usługi i potwierdzasz zapoznanie się z {" "}
+          <Link href="/polityka-prywatnosci" target="_blank">polityką prywatności</Link> oraz {" "}
+          <Link href="/polityka-cookies" target="_blank">polityką cookies</Link>.
         </p>
         <div className="pm-summary-support">
           Potrzebujesz pomocy? <button type="button">Skontaktuj się <ChevronRight size={13} /></button>

@@ -12,6 +12,7 @@ import {
   Palette,
   Save,
   Send,
+  ShieldCheck,
   SlidersHorizontal,
   Warehouse,
 } from "lucide-react";
@@ -70,6 +71,7 @@ const requiredLists: Array<{ field: keyof CompanyConfiguratorSettings; label: st
 
 const sectionLinks = [
   { id: "branding", label: "Branding" },
+  { id: "prywatnosc", label: "Prywatność" },
   { id: "dostepnosc", label: "Funkcje" },
   { id: "oferta", label: "Oferta" },
   { id: "otwory", label: "Otwory" },
@@ -197,6 +199,16 @@ function SubGroup({ title, children }: { title: string; children: React.ReactNod
 export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap }) {
   const [settings, setSettings] = useState(bootstrap.settings);
   const [branding, setBranding] = useState(bootstrap.company.branding);
+  const [privacyProfile, setPrivacyProfile] = useState(
+    bootstrap.company.privacyProfile || {
+      controllerName: "",
+      address: "",
+      taxId: "",
+      privacyEmail: "",
+      privacyPhone: null,
+      noticeVersion: 1,
+    },
+  );
   const [busy, setBusy] = useState<"draft" | "publish" | "upload" | null>(null);
   // Validation errors stay inline: they point at a specific field group and
   // must not disappear on a toast timeout.
@@ -256,7 +268,13 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
     setValidationError(null);
   }
 
-  function validate() {
+  function changePrivacyProfile(patch: Partial<typeof privacyProfile>) {
+    setPrivacyProfile({ ...privacyProfile, ...patch });
+    setDirty(true);
+    setValidationError(null);
+  }
+
+  function validate(publish: boolean) {
     if (branding.name.trim().length < 2) return "Nazwa marki musi mieć co najmniej 2 znaki.";
     for (const item of requiredLists) {
       if (!Array.isArray(settings[item.field]) || (settings[item.field] as string[]).length === 0) {
@@ -289,6 +307,21 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
       );
       if (missingType) return "Każdy włączony typ bramy musi mieć co najmniej jeden dostępny model.";
     }
+    const ordersAvailable = Boolean(
+      bootstrap.availableCapabilities?.orders ?? bootstrap.capabilities.orders,
+    ) && !settings.disabledFeatures.includes("orders");
+    if (
+      publish
+      && ordersAvailable
+      && (
+        !privacyProfile.controllerName.trim()
+        || !privacyProfile.address.trim()
+        || !privacyProfile.taxId.trim()
+        || !privacyProfile.privacyEmail.trim()
+      )
+    ) {
+      return "Uzupełnij nazwę administratora, adres, NIP i e-mail w sekcji prywatności.";
+    }
     return null;
   }
 
@@ -317,7 +350,7 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
   }
 
   async function save(publish: boolean) {
-    const error = validate();
+    const error = validate(publish);
     if (error) {
       setValidationError(error);
       return;
@@ -328,11 +361,12 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
       const response = await fetch(`/api/companies/${bootstrap.company.slug}/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings, branding, publish }),
+        body: JSON.stringify({ settings, branding, privacyProfile, publish }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Nie udało się zapisać ustawień.");
       setSettings(result.settings);
+      if (result.privacyProfile) setPrivacyProfile(result.privacyProfile);
       setDirty(false);
       toast.success(
         publish
@@ -430,6 +464,67 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
                   onChange={(event) => changeBranding({ accentColor: event.target.value })}
                 />
               </div>
+            </div>
+          </div>
+        </Section>
+
+        <Section
+          id="prywatnosc"
+          title="Administrator danych klientów"
+          description="Te dane pojawią się w informacji prywatności przy publicznym formularzu zamówienia."
+          icon={ShieldCheck}
+        >
+          <Alert className="border-primary/25 bg-primary/5">
+            <AlertTitle>Wymagane przed uruchomieniem zamówień</AlertTitle>
+            <AlertDescription>
+              Warstwowe3D przetwarza dane zamówień jako dostawca platformy. Twoja firma pozostaje
+              administratorem danych klienta i musi podać aktualne dane kontaktowe.
+            </AlertDescription>
+          </Alert>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="privacy-controller">Pełna nazwa administratora</Label>
+              <Input
+                id="privacy-controller"
+                value={privacyProfile.controllerName}
+                onChange={(event) => changePrivacyProfile({ controllerName: event.target.value })}
+                placeholder="np. Przykładowa Firma sp. z o.o."
+              />
+            </div>
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="privacy-address">Pełny adres</Label>
+              <Input
+                id="privacy-address"
+                value={privacyProfile.address}
+                onChange={(event) => changePrivacyProfile({ address: event.target.value })}
+                placeholder="Ulica i numer, kod pocztowy, miejscowość, kraj"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="privacy-tax-id">NIP</Label>
+              <Input
+                id="privacy-tax-id"
+                value={privacyProfile.taxId}
+                onChange={(event) => changePrivacyProfile({ taxId: event.target.value })}
+                inputMode="numeric"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="privacy-email">E-mail do spraw prywatności</Label>
+              <Input
+                id="privacy-email"
+                type="email"
+                value={privacyProfile.privacyEmail}
+                onChange={(event) => changePrivacyProfile({ privacyEmail: event.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="privacy-phone">Telefon (opcjonalnie)</Label>
+              <Input
+                id="privacy-phone"
+                value={privacyProfile.privacyPhone || ""}
+                onChange={(event) => changePrivacyProfile({ privacyPhone: event.target.value })}
+              />
             </div>
           </div>
         </Section>

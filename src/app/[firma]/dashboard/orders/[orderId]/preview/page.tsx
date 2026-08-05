@@ -3,7 +3,7 @@ import { ArrowLeft, Box, Info } from "lucide-react";
 import { notFound } from "next/navigation";
 import App from "@/App";
 import { Button } from "@/components/ui/button";
-import { getCompanyOrder } from "@/server/services/dashboardService";
+import { getCompanyOrder, getOrderPdfContractor } from "@/server/services/dashboardService";
 import { getConfiguratorBootstrap } from "@/server/services/companyService";
 import { FEATURE_KEYS } from "@/types/saas";
 import { OrderPdfGenerator } from "@/components/dashboard/OrderPdfGenerator";
@@ -17,9 +17,12 @@ export default async function OrderConfigurationPreviewPage({ params, searchPara
 }) {
   const { firma, orderId } = await params;
   const query = await searchParams;
-  const [data, companyBootstrap] = await Promise.all([
+  const [data, companyBootstrap, contractor] = await Promise.all([
     getCompanyOrder(firma, orderId),
     getConfiguratorBootstrap(firma),
+    // Dane rejestrowe wykonawcy na stronę tytułową dokumentu. Osobne zapytanie,
+    // bo bootstrap jest serwowany także publicznie i NIP-u zawierać nie może.
+    getOrderPdfContractor(firma),
   ]);
   if (!data || !companyBootstrap) notFound();
 
@@ -98,6 +101,7 @@ export default async function OrderConfigurationPreviewPage({ params, searchPara
               slug={firma}
               orderId={orderId}
               quote={order.quote ?? null}
+              contractor={contractor}
               hasPdf={Boolean(order.pdfBlobPath)}
               autoStart={query.generatePdf === "1"}
             />

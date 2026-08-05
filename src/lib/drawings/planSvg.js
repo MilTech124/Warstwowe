@@ -10,28 +10,47 @@ import {
   INK,
   INK_LIGHT,
   STEEL,
+  TITLE_BLOCK_HEIGHT,
   createProjector,
   dimLineH,
   dimLineV,
+  drawingScaleLabel,
   formatMetersLabel,
   line,
   rect,
   svgDocument,
   text,
+  titleBlock,
 } from "@/lib/drawings/svgPrimitives";
 
 // Elementy pionowe (słupy) rysujemy jako kwadraciki, poziome jako linie.
 const VERTICAL_ROLES = new Set(["cornerPost", "post", "column", "wallPost", "endPost", "overOpeningPost", "projectionPost", "openingJamb"]);
 
-export function planSvg(config, model, { widthPt = 470, heightPt = 330 } = {}) {
+/**
+ * @param {object} [options]
+ * @param {number} [options.widthPt]  domyślnie szerokość kolumny tekstu w PDF —
+ *   dokument osadza rysunek 1:1, więc jednostka SVG = punkt PDF i skala jest prawdziwa
+ * @param {string} [options.accent]   kolor akcentu firmy
+ * @param {object} [options.sheet]    pola tabelki rysunkowej; bez nich tabelki nie ma
+ */
+export function planSvg(config, model, { widthPt = 515, heightPt = 340, accent = ACCENT, sheet = null } = {}) {
   const { widthM, lengthM } = config.dimensions;
   const footprint = roofFootprint(config);
   const projectionM = frontProjectionDepth(config);
 
+  // Rysunek żyje nad tabelką — inaczej linie wymiarowe wchodziłyby pod nią.
+  const contentHeight = sheet ? heightPt - TITLE_BLOCK_HEIGHT : heightPt;
   const worldWidth = Math.max(footprint.roofWidth, widthM) + 1.6;
   const worldHeight = Math.max(footprint.roofLength + projectionM, lengthM) + 1.6;
   const padding = { left: 34, right: 18, top: 20, bottom: 34 };
-  const projector = createProjector({ worldWidth, worldHeight, boxWidth: widthPt, boxHeight: heightPt, padding });
+  const projector = createProjector({
+    worldWidth,
+    worldHeight,
+    boxWidth: widthPt,
+    boxHeight: contentHeight,
+    padding,
+    snapScale: Boolean(sheet),
+  });
 
   // Świat: x ∈ [-worldWidth/2, worldWidth/2] → u = x + worldWidth/2
   const ux = (x) => projector.x(x + worldWidth / 2);
@@ -58,12 +77,12 @@ export function planSvg(config, model, { widthPt = 470, heightPt = 330 } = {}) {
   if (projectionM > 0) {
     parts.push(
       rect(ux(-widthM / 2), vz(lengthM / 2 + projectionM), projector.length(widthM), projector.length(projectionM), {
-        stroke: ACCENT,
+        stroke: accent,
         strokeWidth: 0.9,
         fill: "none",
       }),
     );
-    parts.push(text(ux(0), vz(lengthM / 2 + projectionM / 2) + 2, `wypust ${formatMetersLabel(projectionM)}`, { size: 5.5, fill: ACCENT }));
+    parts.push(text(ux(0), vz(lengthM / 2 + projectionM / 2) + 2, `wypust ${formatMetersLabel(projectionM)}`, { size: 5.5, fill: accent }));
   }
 
   // Konstrukcja w rzucie.
@@ -93,15 +112,15 @@ export function planSvg(config, model, { widthPt = 470, heightPt = 330 } = {}) {
       const half = opening.widthM / 2;
       if (opening.wall === "front" || opening.wall === "back") {
         const z = opening.wall === "front" ? lengthM / 2 : -lengthM / 2;
-        parts.push(line(ux(coord - half), vz(z), ux(coord + half), vz(z), { stroke: ACCENT, width: 2.6 }));
+        parts.push(line(ux(coord - half), vz(z), ux(coord + half), vz(z), { stroke: accent, width: 2.6 }));
       } else {
         const x = opening.wall === "right" ? widthM / 2 : -widthM / 2;
-        parts.push(line(ux(x), vz(coord - half), ux(x), vz(coord + half), { stroke: ACCENT, width: 2.6 }));
+        parts.push(line(ux(x), vz(coord - half), ux(x), vz(coord + half), { stroke: accent, width: 2.6 }));
       }
     });
 
   // Wymiary zewnętrzne.
-  parts.push(dimLineH(ux(-widthM / 2), ux(widthM / 2), heightPt - 12, formatMetersLabel(widthM)));
+  parts.push(dimLineH(ux(-widthM / 2), ux(widthM / 2), contentHeight - 12, formatMetersLabel(widthM)));
   parts.push(dimLineV(vz(-lengthM / 2), vz(lengthM / 2), 22, formatMetersLabel(lengthM)));
 
   // Rozstaw ram/krokwi jako opis siatki.
@@ -112,6 +131,17 @@ export function planSvg(config, model, { widthPt = 470, heightPt = 330 } = {}) {
       : `ramy co ${formatMetersLabel(spec.baySpacing)}, słupki co ${formatMetersLabel(spec.wallPostSpacing)}`;
   parts.push(text(widthPt - 6, 12, gridLabel, { size: 6, fill: INK_LIGHT, anchor: "end" }));
   parts.push(text(6, 12, "RZUT Z GÓRY", { size: 7.5, fill: INK, anchor: "start", bold: true }));
+
+  if (sheet) {
+    parts.push(
+      titleBlock(
+        widthPt,
+        heightPt,
+        { ...sheet, title: "RZUT Z GÓRY", scaleLabel: drawingScaleLabel(projector.scaleDenominator) },
+        { accent },
+      ),
+    );
+  }
 
   return svgDocument(widthPt, heightPt, parts.join(""));
 }

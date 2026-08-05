@@ -16,7 +16,7 @@ Docelowo każda firma otrzymuje:
 - odseparowane zamówienia,
 - wybrany pakiet funkcjonalny,
 - pracowników powiązanych z firmą wspólnym `companyId`,
-- rozliczenia obsługiwane przez PayU.
+- rozliczenia obsługiwane przez Stripe Billing.
 
 ## 2. Zaimplementowane ścieżki
 
@@ -56,7 +56,7 @@ Jeżeli firma nie ma aktywnego dostępu, jej publiczna ścieżka pokazuje brando
 
 Statyczne nazwy, takie jak `api`, `superadmin`, `logowanie`, `rejestracja`, `onboarding`, `panel` i `demo`, są zablokowane jako slug firmy.
 
-Po powrocie z PayU oraz przy wejściu przez `/panel` aplikacja może uzgodnić ostatni status płatności bezpośrednio z API PayU. Pozwala to aktywować opłacony pakiet także wtedy, gdy webhook jest opóźniony albo jego wcześniejsze przetwarzanie zostało przerwane.
+Po powrocie ze Stripe Checkout aplikacja może uzgodnić wskazaną sesję bezpośrednio z API Stripe. Podpisany webhook pozostaje nadrzędnym źródłem stanu płatności.
 
 ## 3. Pakiety i centralne uprawnienia
 
@@ -110,7 +110,7 @@ Dodane modele obejmują:
 - nadpisania funkcji,
 - subskrypcje,
 - płatności i próby obciążeń,
-- webhooki PayU,
+- webhooki Stripe,
 - producentów i produkty katalogowe,
 - presety i wykończenia,
 - zamówienia i zdarzenia zamówień,
@@ -244,32 +244,29 @@ Panel umożliwia:
 
 Wejście superadmina do dashboardu firmy pokazuje wyraźny baner. Tryb nadzoru jest domyślnie tylko do odczytu, a endpointy firmy blokują zwykłe operacje zapisu wykonywane w tym trybie.
 
-## 8. PayU
+## 8. Stripe Billing
 
 Zaimplementowano:
 
-- adapter PayU Sandbox/Production,
-- OAuth,
-- Secure Form po stronie przeglądarki,
-- tokenizację karty,
-- `recurring: FIRST` przy rozpoczynaniu trialu,
-- `recurring: STANDARD` przy kolejnych obciążeniach,
+- hostowany Stripe Checkout w trybie test/live,
+- Stripe Customer i Customer Portal,
+- immutable Product/Price dla wersji planów,
 - trial 7 dni tylko dla subskrypcji miesięcznej,
 - płatność jednorazową za miesiąc,
 - płatność jednorazową za pół roku,
-- unikalny `extOrderId`,
-- weryfikację podpisu webhooka,
+- neutralne referencje płatności i identyfikatory Stripe,
+- weryfikację `Stripe-Signature` na surowym body,
 - idempotencję webhooków,
-- obsługę `COMPLETED` i `CANCELED`,
-- natychmiastowe wyłączenie dostępu po nieudanym odnowieniu,
+- faktury, płatności asynchroniczne, zwroty i Smart Retries,
+- okres karencji po nieudanym odnowieniu,
 - zaplanowaną zmianę pakietu na koniec okresu,
 - natychmiastową zmianę pakietu podczas trialu,
 - rezygnację na koniec opłaconego okresu,
 - automatyczne wygaszanie przedpłat.
 
-Cron odnowień jest skonfigurowany w `vercel.json`. Na planie Vercel Hobby uruchamia się raz dziennie, ponieważ ten plan nie obsługuje częstszych harmonogramów. Plan Pro pozwala wrócić do harmonogramu co 5 minut.
+Stripe wykonuje odnowienia i ponowienia płatności. Cron w `vercel.json` działa raz dziennie wyłącznie dla lokalnego wygaszania i zmian pakietów przedpłaconych.
 
-Aplikacja nie zapisuje numeru karty ani CVV. Lokalnie pozostają wyłącznie identyfikatory PayU oraz maskowane dane karty.
+Aplikacja nie zapisuje numeru karty ani CVC. Lokalnie pozostają identyfikatory Stripe oraz marka i cztery ostatnie cyfry metody płatności.
 
 ## 9. PDF, pliki i e-maile
 
@@ -299,7 +296,7 @@ Zaimplementowano:
 - kontrolę limitu kont w API,
 - walidację Zod,
 - ponowną walidację konfiguracji zamówienia po stronie serwera,
-- weryfikację podpisów PayU na surowym body,
+- weryfikację podpisów Stripe na surowym body,
 - idempotencję webhooków,
 - prywatny dostęp do PDF,
 - brak danych kart w bazie,
@@ -372,8 +369,8 @@ Dodano testy:
 - [ ] Skonfigurować Clerk oraz dozwolone adresy aplikacji.
 - [ ] Skonfigurować w Clerk logowanie, rejestrację i dozwolone adresy przekierowań.
 - [ ] Uzupełnić `CLERK_SUPERADMIN_USER_IDS`.
-- [ ] Skonfigurować PayU Sandbox.
-- [ ] Uzyskać aktywację tokenizacji i płatności cyklicznych od PayU.
+- [ ] Skonfigurować Stripe Test Mode, Checkout i Customer Portal.
+- [ ] Skonfigurować Smart Retries i wiadomości Stripe Billing.
 - [ ] Skonfigurować prywatny i publiczny Vercel Blob.
 - [ ] Skonfigurować konto SMTP Webd oraz adres nadawcy we wszystkich środowiskach.
 - [ ] Ustawić bezpieczny `CRON_SECRET`.
@@ -383,22 +380,22 @@ Dodano testy:
 
 - [ ] Przetestować pełną rejestrację z prawdziwym środowiskiem Clerk.
 - [ ] Przetestować utworzenie członkostwa właściciela oraz przyjęcie zaproszenia pracownika.
-- [ ] Przetestować tokenizację karty w PayU Secure Form.
+- [ ] Przetestować zapisanie metody płatności w Stripe Checkout.
 - [ ] Przetestować transakcję 0 zł i rozpoczęcie trialu.
 - [ ] Przetestować pierwsze obciążenie po trialu.
-- [ ] Przetestować odnowienie `recurring: STANDARD`.
+- [ ] Przetestować pierwszą fakturę i kolejne odnowienie Stripe Billing.
 - [ ] Przetestować płatność za miesiąc.
 - [ ] Przetestować przedpłatę półroczną.
 - [ ] Przetestować anulowanie i odrzucenie płatności.
-- [ ] Przetestować ponowiony webhook PayU.
+- [ ] Przetestować ponowiony webhook Stripe.
 - [ ] Przetestować niepoprawny podpis webhooka.
 - [ ] Przetestować prywatny PDF na produkcyjnym Vercel Blob.
 - [ ] Przetestować wiadomości SMTP Webd, odpowiedzi `reply-to` i dostarczalność.
 
 ### Funkcje wymagające dalszego rozwoju
 
-- [ ] Dodać kontrolowany proces zwrotów PayU z osobnym potwierdzeniem superadmina.
-- [ ] Dodać zmianę zapisanej karty PayU w panelu rozliczeń.
+- [x] Synchronizować zwroty wykonane w Stripe Dashboard.
+- [x] Udostępnić zmianę zapisanej karty w Customer Portal.
 - [ ] Dodać ręczne ponowienie płatności po zmianie karty.
 - [ ] Dodać globalną, paginowaną listę wszystkich zamówień w superadminie.
 - [ ] Dodać globalny ekran użytkowników Clerk.
@@ -414,21 +411,21 @@ Dodano testy:
 ### Testy automatyczne przed produkcją
 
 - [ ] Dodać testy integracyjne modeli z testową bazą MongoDB.
-- [ ] Dodać testy endpointów z mockami Clerk, PayU, Blob i SMTP.
+- [ ] Dodać testy endpointów z mockami Clerk, Stripe, Blob i SMTP.
 - [ ] Dodać Playwright E2E dla rejestracji i onboardingu.
 - [ ] Dodać E2E publicznego zamówienia i dashboardu firmy.
 - [ ] Dodać E2E zmiany pakietu.
 - [ ] Dodać E2E ograniczeń roli handlowca.
 - [ ] Dodać test izolacji zamówień pomiędzy dwiema prawdziwymi firmami.
 - [ ] Dodać test przekroczenia limitu kont przez bezpośrednie wywołanie API.
-- [ ] Dodać automatyczne testy webhooków PayU.
+- [ ] Dodać automatyczne testy webhooków Stripe.
 - [ ] Dodać test odtworzenia starego zamówienia po archiwizacji produktu.
 
 ### Bezpieczeństwo i operacje
 
 - [ ] Wykonać pełny przegląd zależności i podatności przed wdrożeniem.
 - [ ] Skonfigurować monitoring błędów, np. Sentry.
-- [ ] Skonfigurować alerty dla błędów PayU i zadań cron.
+- [ ] Skonfigurować alerty dla błędów Stripe i zadań cron.
 - [ ] Skonfigurować backup MongoDB Atlas.
 - [ ] Ustalić politykę retencji danych klientów i zamówień.
 - [ ] Dodać regulamin, politykę prywatności i treść wymaganych zgód.
@@ -440,10 +437,10 @@ Dodano testy:
 ### Wdrożenie
 
 - [ ] Utworzyć projekt Vercel.
-- [ ] Na planie Hobby zostawić cron raz dziennie albo wybrać plan Pro dla cron co 5 minut.
+- [ ] Pozostawić codzienny cron wyłącznie dla utrzymania przedpłat.
 - [ ] Dodać wszystkie zmienne środowiskowe.
 - [ ] Podłączyć domenę produkcyjną.
-- [ ] Skonfigurować adres webhooka PayU.
+- [ ] Skonfigurować adres webhooka Stripe.
 - [ ] Wykonać wdrożenie Preview.
 - [ ] Przeprowadzić testy akceptacyjne czterech firm testowych.
 - [ ] Wykonać testy mobilne i przeglądarkowe.
@@ -453,7 +450,7 @@ Dodano testy:
 
 1. Skonfigurować MongoDB Atlas i Clerk.
 2. Uruchomić onboarding bez płatności na środowisku Preview.
-3. Skonfigurować PayU Sandbox i płatności cykliczne.
+3. Skonfigurować Stripe Test Mode, Billing i Customer Portal.
 4. Wykonać pełne testy webhooków i odnowień.
 5. Skonfigurować Blob i SMTP Webd.
 6. Dodać E2E z testową bazą.
@@ -470,8 +467,8 @@ Dodano testy:
 - `src/server/db/models.ts` — modele MongoDB/Mongoose.
 - `src/server/services/companyService.ts` — bootstrap i dane firmy.
 - `src/server/services/orderService.ts` — tworzenie i walidacja zamówień.
-- `src/server/services/subscriptionService.ts` — odnowienia i wygaszanie dostępu.
-- `src/server/payu/client.ts` — adapter PayU.
+- `src/server/services/subscriptionService.ts` — wygaszanie i zmiany pakietów przedpłaconych.
+- `src/server/stripe/client.ts` — adapter Checkout, Billing i Customer Portal.
 - `src/app/[firma]` — publiczny konfigurator i dashboard.
 - `src/app/superadmin` — panel operatora SaaS.
 - `src/app/api` — endpointy aplikacji.

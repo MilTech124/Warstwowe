@@ -19,6 +19,17 @@ function normalize(vector) {
 const ORBIT_DIRECTION = normalize([1, 0.25, 1]);
 
 /**
+ * Dystans orbity mieszczący cały obiekt w kadrze. Wydzielony, bo OrbitControls
+ * potrzebuje go do `minDistance`/`maxDistance` — bez tego wzór musiałby istnieć
+ * po raz drugi w CameraRig.
+ */
+export function orbitFitDistance(config) {
+  const footprint = roofFootprint(config);
+  const boundsRadius = Math.hypot(footprint.roofWidth, footprint.roofLength, config.dimensions.wallHeightM) / 2;
+  return (boundsRadius / Math.sin(CAMERA_VERTICAL_FOV / 2)) * 1.18;
+}
+
+/**
  * @param {{ dimensions: { widthM, lengthM, wallHeightM }, roof: object }} config
  * @param {string} cameraMode
  * @returns {{ position: [number, number, number], target: [number, number, number] }}
@@ -29,8 +40,7 @@ export function cameraView(config, cameraMode) {
   const frontEdgeZ = footprint.centerZ + footprint.roofLength / 2;
   const frontDistance = perspectiveFitDistance(Math.max(footprint.roofWidth, wallHeightM * 1.35)) * 1.28;
   const sideDistance = perspectiveFitDistance(Math.max(footprint.roofLength, wallHeightM * 1.35)) * 1.22;
-  const boundsRadius = Math.hypot(footprint.roofWidth, footprint.roofLength, wallHeightM) / 2;
-  const orbitDistance = (boundsRadius / Math.sin(CAMERA_VERTICAL_FOV / 2)) * 1.18;
+  const orbitDistance = orbitFitDistance(config);
   const target = [footprint.centerX, wallHeightM * 0.52, footprint.centerZ];
 
   if (cameraMode === "front") {

@@ -15,12 +15,17 @@ export const orderCreateSchema = z.object({
     email: z.string().trim().email().max(160),
   }),
   notes: z.string().trim().max(2000).optional(),
-  consent: z.literal(true),
+  consent: z.literal(true).optional(),
+  privacyNoticeAccepted: z.literal(true).optional(),
+  privacyNoticeVersion: z.number().int().positive().optional(),
   settingsVersion: z.number().int().positive(),
   configuration: z.record(z.string(), z.unknown()).and(
     z.object({ schemaVersion: z.number().int().min(12) }),
   ),
-});
+}).refine(
+  (input) => input.privacyNoticeAccepted === true || input.consent === true,
+  { message: "Potwierdź zapoznanie się z informacją o przetwarzaniu danych." },
+);
 
 export function sanitizeConfiguration(
   input: Record<string, any>,
@@ -181,6 +186,14 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
   if (!bootstrap.accessActive || !bootstrap.capabilities.orders) {
     throw new Error("Konfigurator firmy nie przyjmuje obecnie zamówień.");
   }
+  const privacyProfile = bootstrap.company.privacyProfile;
+  if (!privacyProfile) {
+    throw new Error("Firma nie opublikowała jeszcze wymaganej informacji o przetwarzaniu danych.");
+  }
+  const privacyNoticeVersion = input.privacyNoticeVersion || privacyProfile.noticeVersion;
+  if (input.privacyNoticeAccepted && privacyNoticeVersion !== privacyProfile.noticeVersion) {
+    throw new Error("Informacja o przetwarzaniu danych zmieniła się. Odśwież stronę i przeczytaj ją ponownie.");
+  }
   if (input.settingsVersion !== bootstrap.settings.version) {
     throw new Error("Oferta firmy zmieniła się. Odśwież konfigurator i sprawdź wybór ponownie.");
   }
@@ -226,6 +239,9 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
     status: "NEW",
     customer: input.customer,
     consent: input.consent,
+    privacyNoticeAccepted: Boolean(input.privacyNoticeAccepted || input.consent),
+    privacyNoticeAcceptedAt: new Date(),
+    privacyNoticeVersion,
     notes: input.notes,
     settingsVersion: input.settingsVersion,
     catalogVersion: bootstrap.catalog.version,

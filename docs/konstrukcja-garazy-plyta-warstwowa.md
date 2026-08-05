@@ -252,22 +252,45 @@ Strefy śniegowe 4–5 podnoszą masę wyraźnie i to jest poprawne: przekrój w
   `steelOrderByProfile` daje zapotrzebowanie hutnicze z 5% zapasem na docinanie.
 - `src/lib/bom/panelBom.js` — powierzchnia ścian netto (całkowanie po `wallTopHeightAt`,
   minus otwory) i **pochylona** powierzchnia połaci; `accessoryBom.js` — obróbki i orynnowanie.
-- `src/lib/projectSummary.js` — jedno źródło treści opisowej dla panelu i PDF.
-- `src/lib/drawings/*` — rzut, przekrój ramy i elewacje jako SVG generowane z modelu.
+- `src/lib/projectSummary.js` — jedno źródło treści opisowej dla panelu i PDF. `staticsSection`
+  wystawia założenia obliczeniowe i tabelę sprawdzenia przekrojów (obciążenie, moment,
+  Wy wymagane vs. dostępne, wytężenie). Rekordy sprawdzeń powstają w `spec.js` przy doborze
+  i są filtrowane po rolach FAKTYCZNIE obecnych w modelu — inaczej mały garaż pokazywałby
+  sprawdzenie krokwi, której w nim nie ma.
+- `src/lib/drawings/*` — rzut, przekrój ramy i **cztery** elewacje jako SVG generowane z modelu.
+  Każdy arkusz ma tabelkę rysunkową (`titleBlock`) ze znormalizowaną skalą — `createProjector`
+  z `snapScale` schodzi do najbliższej wartości z szeregu 1:20…1:2000, nigdy w górę.
+  Rysunki generowane są w szerokości kolumny tekstu PDF, żeby jednostka SVG równała się
+  punktowi dokumentu; wcześniejsze osadzanie 470 pt w 515 pt skalowało je o 9,6% i każda
+  podana skala byłaby fałszywa.
+  **Elewacja tylna i lewa są ODBITE** względem osi świata (`viewSign`), bo ogląda się je
+  z zewnątrz ściany. Odbicie jest jedno, w rzutowaniu — obrys, szkielet i otwory przechodzą
+  przez nie razem. Odbijanie samych otworów to błąd wysłany już dwa razy (patrz §7).
 - `src/lib/pdf/*` — dokument zamówienia w pdfmake (przypięty `0.3.11`), ładowany leniwie.
-  **PDF nie zawiera wyceny** — katalog nie ma cennika, więc rubryki cenowe zostają puste
-  do ręcznego uzupełnienia. Warstwę cenową można dołożyć bez zmian w generatorze.
+  Wycena przychodzi gotowa z serwera (`order.quote`) — dokument nigdy jej nie liczy sam.
+  Dane wykonawcy (logo, NIP, adres, kolor nagłówków) dostarcza `getOrderPdfContractor`
+  z `dashboardService.ts`; świadomie NIE przez bootstrap, bo ten jest serwowany publicznie.
 - `src/lib/capture/captureViews.js` — zrzuty widoków 3D; kamera ustawiana imperatywnie
-  z pominięciem animacji, `showDimensions` wymuszone na `false` (etykiety miarek są w DOM
-  i nie trafiają do bufora WebGL — wymiary idą na rysunki wektorowe).
+  z pominięciem animacji, kadry z `cameraViews.js` (ta sama funkcja, której używa `CameraRig`,
+  więc zrzut w ofercie nie może rozjechać się z ekranem). `showDimensions` wymuszone na `false`
+  — etykiety miarek są w DOM i nie trafiają do bufora WebGL.
+- `src/lib/capture/annotateShot.js` — zamiennik tamtych miarek: rzutuje punkty świata na piksele
+  gotowej bitmapy (macierz kopiowana wewnątrz synchronicznego bloku `shoot`) i dorysowuje linie
+  wymiarowe na canvasie 2D. Widok perspektywiczny i szkielet zostają bez opisów.
 
 ## 9. Mapa drogowa
 
 1. **Tabele producentów płyt** — zastąpienie wartości orientacyjnych rzeczywistymi kartami
    (Kingspan, Balex, Pruszyński…), wybór producenta już istnieje w katalogu.
-2. **Cennik** — `src/config/pricing.js` (zł/kg stali, zł/m² płyt wg grubości, ceny bram),
-   po dodaniu PDF policzy netto/VAT/brutto w istniejących rubrykach.
-3. **Profile dwuteowe w 3D** — `Beam.jsx` rysuje wyłącznie `boxGeometry`; hale mają poprawne
-   etykiety IPE/HEA i masy, ale wizualizacja przekroju jest przybliżona.
-4. **Strefa wiatrowa** — analogicznie do strefy śniegowej, korekta rozstawu słupów.
+2. **Strefa wiatrowa** — wg PN-EN 1991-1-4. Dziś model NIE liczy wiatru w ogóle, a przekrój
+   słupa i słupka bierze się z samej wysokości ściany, nie z obciążenia. To największa
+   pozostała różnica wobec realnego wymiarowania.
+3. **Sprawdzenie ugięcia (SGU)** — przy lekkich profilach zimnogiętych zwykle to ono decyduje
+   o doborze, nie naprężenie. Wymaga dopisania `Iy` do katalogu profili.
+4. **Rygiel ramy portalowej ze zginania** — hala dobiera go przez `pickProfile`, czyli wg samej
+   rozpiętości; tabela sprawdzeń oznacza go dziś jako „dobór wg rozpiętości".
 5. **Detale montażowe** — łączniki, wentylacja, świetliki kalenicowe.
+
+Zrobione: cennik (wycena liczona serwerowo, `domain/pricing/quote.js`) oraz profile dwuteowe
+w 3D (`profileShape.js` + `profileGeometry.js` — prostokąt h×b dla rur, `ExtrudeGeometry` dla
+IPE/HEA/Z/C, orientacja osi mocnej z podpowiedzi `member.up` wystawianej przez model).

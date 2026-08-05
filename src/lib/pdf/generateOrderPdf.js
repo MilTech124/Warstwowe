@@ -1,9 +1,10 @@
 // Orkiestracja: zrzuty 3D → zestawienia → dokument → pobranie pliku.
 
 import { captureViews } from "@/lib/capture/captureViews";
+import { annotateShots } from "@/lib/capture/annotateShot";
 import { twoFrames } from "@/lib/capture/frames";
 import { projectSummary } from "@/lib/projectSummary";
-import { buildOrderDocument, orderNumberFor, TABLE_LAYOUTS } from "@/lib/pdf/orderDocument";
+import { buildOrderDocument, orderNumberFor, orderPdfFileName, TABLE_LAYOUTS } from "@/lib/pdf/orderDocument";
 import { loadPdfMake } from "@/lib/pdf/loadPdfMake";
 
 /**
@@ -49,6 +50,9 @@ export async function generateOrderPdf({
   // Wycena policzona serwerowo przy zapisie zamówienia. Dokument nigdy nie
   // liczy jej sam — bez tego cena w PDF byłaby nieautorytatywna.
   quote = null,
+  // Dane rejestrowe wykonawcy (getOrderPdfContractor). Bez nich dokument zostaje
+  // neutralny — tak jak działał, zanim doszło firmowanie.
+  contractor = null,
   // Katalog z bootstrapu firmy — źródło logo producenta i parametrów λ / U.
   // Bez niego dokument korzysta z danych katalogu statycznego.
   catalog = null,
@@ -78,23 +82,32 @@ export async function generateOrderPdf({
   const config = getConfig();
   const summary = projectSummary(config, { catalog });
 
+  // Wymiary domalowujemy PO zrzutach: wnętrze `shoot` musi zostać synchroniczne,
+  // ale nakładanie opisów już nie — i tak dotyczy gotowych bitmap.
+  report("annotate", "Opisywanie wizualizacji…");
+  const annotatedShots = await annotateShots(shots, config);
+
   report("document", "Składanie dokumentu…");
   const pdfMake = await pdfMakePromise;
   const date = new Date();
-  const [wallLogo, roofLogo] = await Promise.all([
+  const [wallLogo, roofLogo, contractorLogo] = await Promise.all([
     logoDataUrl(summary.cladding.wallLogoUrl),
     logoDataUrl(summary.cladding.roofLogoUrl),
+    logoDataUrl(contractor?.logoUrl),
   ]);
   const document = buildOrderDocument({
     config,
     summary,
-    shots,
+    shots: annotatedShots,
     date,
     quote,
+    contractor,
+    contractorLogo,
     manufacturerLogos: { wall: wallLogo, roof: roofLogo },
   });
   const orderNo = orderNumberFor(config, date);
-  const fileName = `Zamowienie-${orderNo}.pdf`;
+  // Numer zamówienia ma postać KOD/2026/0001 — ukośniki nie mogą wejść do nazwy pliku.
+  const fileName = orderPdfFileName(orderNo);
 
   // 0.3.x: całe API jest obietnicowe.
   const pdf = pdfMake.createPdf(document, TABLE_LAYOUTS);

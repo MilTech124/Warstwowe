@@ -81,7 +81,7 @@ export default async function SuperadminPage() {
           <div className="sa-health-list">
             <div><span><i className="is-good" /> Baza i API</span><strong>Online</strong></div>
             <div><span><i className="is-good" /> Harmonogram odnowień</span><strong>Co 5 min</strong></div>
-            <div><span><i className={data.stats.failed ? "is-bad" : "is-good"} /> PayU</span><strong>{data.stats.failed ? "Sprawdź" : "Stabilnie"}</strong></div>
+            <div><span><i className={data.stats.failed ? "is-bad" : "is-good"} /> Stripe</span><strong>{data.stats.failed ? "Sprawdź" : "Stabilnie"}</strong></div>
           </div>
         </section>
 

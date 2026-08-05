@@ -1,4 +1,9 @@
-import { Schema, model, models } from "mongoose";
+// Mongoose jest pakietem CommonJS — pod czystym ESM Node nie widzi jego
+// nazwanych eksportów, więc każdy import tego modułu poza bundlerem Next
+// (np. test albo skrypt) wywalał się na `does not provide an export named`.
+import mongoose from "mongoose";
+
+const { Schema, model, models } = mongoose;
 import {
   BILLING_MODES,
   FEATURE_KEYS,
@@ -17,6 +22,18 @@ const brandingSchema = new Schema(
     accentColor: { type: String, default: "#f59e0b" },
     supportEmail: { type: String, default: null },
     supportPhone: { type: String, default: null },
+  },
+  { _id: false },
+);
+
+const privacyProfileSchema = new Schema(
+  {
+    controllerName: { type: String, required: true, trim: true },
+    address: { type: String, required: true, trim: true },
+    taxId: { type: String, required: true, trim: true },
+    privacyEmail: { type: String, required: true, lowercase: true, trim: true },
+    privacyPhone: { type: String, default: null, trim: true },
+    noticeVersion: { type: Number, required: true, min: 1 },
   },
   { _id: false },
 );
@@ -86,6 +103,7 @@ const companySettingsSchema = new Schema(
     allowedWindowModelIds: { type: [String], default: [] },
     disabledFeatures: { type: [String], enum: FEATURE_KEYS, default: [] },
     orderNotificationEmails: { type: [String], default: [] },
+    privacyProfile: { type: privacyProfileSchema, default: null },
     draft: { type: Schema.Types.Mixed, default: {} },
     publishedSnapshot: { type: Schema.Types.Mixed, default: {} },
   },
@@ -102,6 +120,9 @@ const planSchema = new Schema(
     features: { type: Schema.Types.Mixed, required: true },
     version: { type: Number, default: 1 },
     active: { type: Boolean, default: true },
+    /** Stripe objects are separate in test and live mode. Each published
+     *  version points at immutable Price objects. */
+    stripeCatalog: { type: Schema.Types.Mixed, default: {} },
   },
   timestamps,
 );
@@ -114,6 +135,7 @@ const planVersionSchema = new Schema(
     prepaidSixMonthsGross: { type: Number, required: true },
     seatLimit: { type: Number, required: true },
     features: { type: Schema.Types.Mixed, required: true },
+    stripeCatalog: { type: Schema.Types.Mixed, default: {} },
     effectiveFrom: { type: Date, default: Date.now, index: true },
     createdBy: String,
   },
@@ -134,12 +156,18 @@ const subscriptionSchema = new Schema(
     currentPeriodEnd: { type: Date, index: true },
     cancelAtPeriodEnd: { type: Boolean, default: false },
     scheduledPackageCode: { type: String, enum: PACKAGE_CODES },
-    payuExtCustomerId: String,
-    cardMask: String,
-    cardBrand: String,
+    provider: { type: String, enum: ["STRIPE"], default: "STRIPE" },
+    stripeCustomerId: { type: String, index: true, sparse: true },
+    stripeSubscriptionId: { type: String, index: true, sparse: true },
+    stripePriceId: String,
+    stripeScheduleId: String,
+    pendingCheckoutSessionId: String,
+    paymentMethodBrand: String,
+    paymentMethodLast4: String,
+    trialUsedAt: Date,
+    scheduledPackageStartsAt: Date,
     lastPaymentAt: Date,
-    // Dunning: a declined renewal moves the subscription to PAST_DUE and keeps
-    // the configurator running until graceEndsAt while the cron retries.
+    // Stripe handles retries. Locally we only keep the access grace window.
     graceEndsAt: Date,
     dunningAttempt: { type: Number, default: 0 },
     nextRetryAt: { type: Date, index: true },
@@ -204,7 +232,13 @@ const orderSchema = new Schema(
       phone: { type: String, required: true },
       email: { type: String, required: true },
     },
-    consent: { type: Boolean, required: true },
+    // Legacy proof used by older clients. New orders use the versioned privacy
+    // notice acknowledgement below; processing necessary to handle an order is
+    // not based on a forced GDPR consent.
+    consent: Boolean,
+    privacyNoticeAccepted: { type: Boolean, default: false },
+    privacyNoticeAcceptedAt: Date,
+    privacyNoticeVersion: Number,
     notes: String,
     assignedClerkUserId: String,
     configurationSnapshot: { type: Schema.Types.Mixed, required: true },
@@ -239,9 +273,20 @@ const paymentSchema = new Schema(
   {
     companyId: { type: Schema.Types.ObjectId, required: true, index: true },
     subscriptionId: { type: Schema.Types.ObjectId, index: true },
-    extOrderId: { type: String, required: true, unique: true, index: true },
-    payuOrderId: { type: String, index: true },
-    status: { type: String, required: true, index: true },
+    provider: { type: String, enum: ["STRIPE"], default: "STRIPE", index: true },
+    reference: { type: String, unique: true, sparse: true, index: true },
+    stripeCheckoutSessionId: { type: String, index: true, sparse: true },
+    stripePaymentIntentId: { type: String, index: true, sparse: true },
+    stripeInvoiceId: { type: String, index: true, sparse: true },
+    invoiceNumber: String,
+    invoiceUrl: String,
+    receiptUrl: String,
+    status: {
+      type: String,
+      required: true,
+      index: true,
+      enum: ["PENDING", "PAID", "FAILED", "CANCELED", "REFUNDED"],
+    },
     amountGross: { type: Number, required: true },
     catalogAmountGross: Number,
     testAmountOverride: { type: Boolean, default: false },
@@ -255,26 +300,14 @@ const paymentSchema = new Schema(
   timestamps,
 );
 
-const billingAttemptSchema = new Schema(
-  {
-    companyId: { type: Schema.Types.ObjectId, required: true, index: true },
-    subscriptionId: { type: Schema.Types.ObjectId, required: true, index: true },
-    attemptKey: { type: String, required: true, unique: true, index: true },
-    status: { type: String, required: true },
-    errorCode: String,
-    errorMessage: String,
-    attemptedAt: { type: Date, default: Date.now },
-  },
-  timestamps,
-);
-
 const webhookEventSchema = new Schema(
   {
-    provider: { type: String, default: "PAYU" },
+    provider: { type: String, default: "STRIPE" },
     eventKey: { type: String, required: true, unique: true, index: true },
     signature: String,
     status: String,
     payload: Schema.Types.Mixed,
+    processingStartedAt: Date,
     processedAt: Date,
     processingError: String,
   },
@@ -378,6 +411,24 @@ const auditLogSchema = new Schema(
   timestamps,
 );
 
+const consentEventSchema = new Schema(
+  {
+    consentId: { type: String, required: true, index: true },
+    action: {
+      type: String,
+      enum: ["ACCEPT_ALL", "REJECT_OPTIONAL", "SAVE_PREFERENCES", "REVOKE"],
+      required: true,
+    },
+    policyVersion: { type: String, required: true },
+    analytics: { type: Boolean, required: true },
+    marketing: { type: Boolean, required: true },
+    decidedAt: { type: Date, required: true },
+    expiresAt: { type: Date, required: true },
+  },
+  { timestamps: true, minimize: false },
+);
+consentEventSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 export const Company = models.Company || model("Company", companySchema);
 export const CompanyMembership =
   models.CompanyMembership || model("CompanyMembership", companyMembershipSchema);
@@ -393,7 +444,6 @@ export const FeatureOverride = models.FeatureOverride || model("FeatureOverride"
 export const Order = models.Order || model("Order", orderSchema);
 export const OrderEvent = models.OrderEvent || model("OrderEvent", orderEventSchema);
 export const Payment = models.Payment || model("Payment", paymentSchema);
-export const BillingAttempt = models.BillingAttempt || model("BillingAttempt", billingAttemptSchema);
 export const WebhookEvent = models.WebhookEvent || model("WebhookEvent", webhookEventSchema);
 export const CatalogManufacturer =
   models.CatalogManufacturer || model("CatalogManufacturer", catalogManufacturerSchema);
@@ -402,3 +452,4 @@ export const MaterialFinish = models.MaterialFinish || model("MaterialFinish", m
 export const Preset = models.Preset || model("Preset", presetSchema);
 export const Counter = models.Counter || model("Counter", counterSchema);
 export const AuditLog = models.AuditLog || model("AuditLog", auditLogSchema);
+export const ConsentEvent = models.ConsentEvent || model("ConsentEvent", consentEventSchema);

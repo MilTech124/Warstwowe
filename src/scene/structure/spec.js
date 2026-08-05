@@ -10,8 +10,10 @@ import {
   HALL_PROFILE_TABLES,
   STEEL_GRADE_GARAGE,
   STEEL_GRADE_HALL,
+  STEEL_YIELD_MPA,
   pickProfile,
   pickProfileByBending,
+  spanPickRecord,
 } from "@/config/steelProfiles";
 import { isGableRoof } from "@/scene/roofMath";
 import { axisSpan, frameAxes } from "@/scene/structure/axes";
@@ -62,18 +64,56 @@ export const SNOW_ZONES = [1, 2, 3, 4, 5];
 
 // Charakterystyczne obciążenie śniegiem gruntu sk [kN/m²] wg stref PN-EN 1991-1-3
 // z załącznikiem krajowym. Strefa 5 zależy od wysokości n.p.m. — bierzemy dolny próg.
-const SNOW_ZONE_SK_KN_M2 = { 1: 0.7, 2: 0.9, 3: 1.2, 4: 1.6, 5: 2.0 };
+//
+// Eksportowane, bo dokument ofertowy pokazuje sk obok wyniku. Druga kopia tablicy
+// w warstwie opisowej rozjechałaby się z tą przy pierwszej korekcie.
+export const SNOW_ZONE_SK_KN_M2 = { 1: 0.7, 2: 0.9, 3: 1.2, 4: 1.6, 5: 2.0 };
 
 // Ciężar własny poszycia dachowego z łącznikami [kN/m²].
-const ROOF_DEAD_LOAD_KN_M2 = 0.15;
+export const ROOF_DEAD_LOAD_KN_M2 = 0.15;
+
+// μ₁ — współczynnik kształtu dachu. 0,8 obowiązuje dla połaci do 30°; konfigurator
+// dopuszcza spadek do 45% (24,2°), więc cały zakres mieści się w tej wartości.
+export const SNOW_SHAPE_COEFFICIENT = 0.8;
+
+// Częściowe współczynniki bezpieczeństwa kombinacji podstawowej (SGN).
+export const LOAD_FACTOR_G = 1.35;
+export const LOAD_FACTOR_Q = 1.5;
+
+/** Charakterystyczne obciążenie śniegiem gruntu sk [kN/m²] dla strefy. */
+export function snowGroundLoadKnM2(zone) {
+  return SNOW_ZONE_SK_KN_M2[Math.min(5, Math.max(1, Number(zone) || 2))] ?? SNOW_ZONE_SK_KN_M2[2];
+}
 
 /**
  * Obliczeniowe obciążenie połaci [kN/m²] do sprawdzenia przekrojów.
- * s = μ₁·sk (μ₁ = 0,8 dla połaci do 30°), kombinacja 1,35·G + 1,5·S.
+ * s = μ₁·sk, kombinacja γ_G·G + γ_Q·s.
  */
 export function roofDesignLoadKnM2(zone) {
-  const sk = SNOW_ZONE_SK_KN_M2[Math.min(5, Math.max(1, Number(zone) || 2))] ?? 0.9;
-  return 1.35 * ROOF_DEAD_LOAD_KN_M2 + 1.5 * 0.8 * sk;
+  return (
+    LOAD_FACTOR_G * ROOF_DEAD_LOAD_KN_M2 + LOAD_FACTOR_Q * SNOW_SHAPE_COEFFICIENT * snowGroundLoadKnM2(zone)
+  );
+}
+
+/**
+ * Wspólny blok założeń obliczeniowych dla obu klas konstrukcji. Trzyma w jednym
+ * miejscu wszystko, co dokument ofertowy musi zacytować obok tabeli sprawdzeń.
+ */
+function staticsBlock({ snowZone, designLoadKnM2, steelGrade, checks }) {
+  const skKnM2 = snowGroundLoadKnM2(snowZone);
+  return {
+    snowZone,
+    skKnM2,
+    shapeCoefficient: SNOW_SHAPE_COEFFICIENT,
+    roofSnowKnM2: SNOW_SHAPE_COEFFICIENT * skKnM2,
+    deadLoadKnM2: ROOF_DEAD_LOAD_KN_M2,
+    gammaG: LOAD_FACTOR_G,
+    gammaQ: LOAD_FACTOR_Q,
+    designLoadKnM2,
+    steelGrade,
+    yieldMpa: STEEL_YIELD_MPA,
+    checks,
+  };
 }
 
 export function reinforcementLevel(id) {
@@ -218,6 +258,27 @@ export function garageSpec(inputs) {
     requiredWyCm3: { purlin: purlinPick.requiredWyCm3, rafter: rafterPick.requiredWyCm3 },
     sectionsAdequate: purlinPick.adequate && rafterPick.adequate,
     plateThicknessM: level.plateThicknessM,
+    // Pełny tok doboru do udokumentowania w ofercie. Kolejność jak w tabeli:
+    // najpierw elementy sprawdzone ze zginania, potem dobrane z rozpiętości.
+    statics: staticsBlock({
+      snowZone: inputs.structure.snowZone,
+      designLoadKnM2: roofLoadKnM2,
+      steelGrade: STEEL_GRADE_GARAGE,
+      checks: [
+        purlinPick.check,
+        rafterPick.check,
+        spanPickRecord("cornerPost", cornerPost, { spanM: wallHeightM }),
+        spanPickRecord("post", post, { spanM: wallHeightM }),
+        spanPickRecord("ridge", ridge, {
+          spanM: rafterSpacing,
+          basis: "dobór wg rozstawu krokwi, stopień wyżej — styk pary krokwi",
+        }),
+        spanPickRecord("gateFrame", gateFrame, {
+          spanM: widestGate || 2.5,
+          basis: "rama otworu bramowego — zawsze wzmocniona (docs 3.2)",
+        }),
+      ],
+    }),
     profiles: {
       cornerPost,
       post,
@@ -335,6 +396,24 @@ export function hallSpec(inputs, structureClass) {
     girtSpacing: (heavy ? 2.0 : 1.8) * level.spacingFactor,
     haunchLength: heavy ? 1.15 : 0.85,
     plateThicknessM: Math.max(0.012, level.plateThicknessM * 1.5),
+    // Uwaga: rygiel ramy portalowej idzie przez pickProfile, czyli WYŁĄCZNIE
+    // wg rozpiętości — głównego elementu zginanego hali nie sprawdzamy momentem.
+    // Tabela musi to powiedzieć wprost, zamiast pokazywać zmyślone wytężenie.
+    statics: staticsBlock({
+      snowZone: inputs.structure.snowZone,
+      designLoadKnM2: roofLoadKnM2,
+      steelGrade: STEEL_GRADE_HALL,
+      checks: [
+        purlinPick.check,
+        spanPickRecord("column", column, { spanM: wallHeightM }),
+        spanPickRecord("rafter", rafter, {
+          spanM: rafterRunM,
+          basis: "dobór wg rozpiętości połaci — bez sprawdzenia momentu",
+        }),
+        spanPickRecord("wallPost", wallPost, { spanM: wallHeightM }),
+        spanPickRecord("girt", girt, { spanM: actualBaySpacing }),
+      ],
+    }),
     profiles: {
       column,
       rafter,

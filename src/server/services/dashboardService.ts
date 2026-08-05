@@ -3,11 +3,11 @@ import { clerkConfigured, requireCompanyMember } from "@/server/auth";
 import { connectMongo } from "@/server/db/connection";
 import {
   AuditLog,
-  BillingAttempt,
   CatalogManufacturer,
   CatalogProduct,
   Company,
   CompanyMembership,
+  CompanySettings,
   FeatureOverride,
   Order,
   OrderEvent,
@@ -17,6 +17,13 @@ import {
   WebhookEvent,
 } from "@/server/db/models";
 import { demoBootstrap, findCompanyBySlug, getCompanyAdminSummary } from "@/server/services/companyService";
+import {
+  DEFAULT_BRAND_ACCENT,
+  DEFAULT_BRAND_PRIMARY,
+  relativeLuminance,
+  safeHexColor,
+} from "@/lib/branding";
+import { DEMO_PRIVACY_PROFILE } from "@/config/legal";
 import { getPresetDefaults, getPresetOpenings, PRESETS } from "@/config/catalog";
 import { DEFAULT_FRONT_PROJECTION } from "@/config/frontProjection";
 import { DEFAULT_LIGHTING } from "@/config/lighting";
@@ -262,13 +269,69 @@ export async function getCompanyOrder(slug: string, orderId: string) {
   return { order, events, readOnly: Boolean((access as any).superadminAccess) };
 }
 
+export interface OrderPdfContractor {
+  name: string;
+  legalName: string;
+  address: string | null;
+  taxId: string | null;
+  email: string | null;
+  phone: string | null;
+  logoUrl: string | null;
+  /** Kolor nagłówków dokumentu — już zwalidowany, PDF go nie sprawdza. */
+  documentAccent: string;
+  primaryColor: string;
+  accentColor: string;
+}
+
+/**
+ * Dane wykonawcy na stronę tytułową dokumentu ofertowego i do tabelki rysunkowej.
+ *
+ * Świadomie NIE przez `getConfiguratorBootstrap`: jego wynik serwuje wprost
+ * nieuwierzytelniony `/api/public/companies/[firma]/bootstrap`, więc dopisanie
+ * tam NIP-u i adresu rejestrowego opublikowałoby dane każdego najemcy.
+ *
+ * Kolejność scalania źródeł wynika z tego, jak często są wypełnione: `billing`
+ * jest w schemacie opcjonalne, a `privacyProfile` obowiązkowe dla opublikowanego
+ * najemcy (wymóg informacyjny RODO), więc stanowi solidniejszy fallback.
+ */
+export async function getOrderPdfContractor(slug: string): Promise<OrderPdfContractor | null> {
+  const access = await assertCompanyDashboardAccess(slug);
+  const company = (access as any).company;
+  if (!company) return null;
+
+  const branding = company.branding ?? {};
+  const billing = company.billing ?? {};
+  const privacy = (access as any).demo
+    ? DEMO_PRIVACY_PROFILE
+    : ((await CompanySettings.findOne({ companyId: company._id }).lean()) as any)?.privacyProfile ?? {};
+
+  // Nagłówki dokumentu idą kolorem PODSTAWOWYM marki (domyślnie ta sama zieleń,
+  // której PDF używał na sztywno), nie kolorem akcentu — ten bywa pomarańczowy
+  // i na białej kartce ginie. Zbyt jasny kolor podstawowy też schodzi na domyślny.
+  const primaryColor = safeHexColor(branding.primaryColor, DEFAULT_BRAND_PRIMARY);
+
+  return {
+    name: String(branding.name || company.displayName || slug),
+    legalName: String(billing.legalName || privacy.controllerName || branding.name || company.displayName || slug),
+    address: billing.address || privacy.address || null,
+    taxId: billing.taxId || privacy.taxId || null,
+    email: billing.email || privacy.privacyEmail || branding.supportEmail || null,
+    phone: branding.supportPhone || privacy.privacyPhone || null,
+    logoUrl: branding.logoUrl || null,
+    documentAccent: relativeLuminance(primaryColor) > 0.6 ? DEFAULT_BRAND_PRIMARY : primaryColor,
+    primaryColor,
+    accentColor: safeHexColor(branding.accentColor, DEFAULT_BRAND_ACCENT),
+  };
+}
+
 export async function getCompanyPayments(slug: string) {
   const access = await assertCompanyDashboardAccess(slug);
   if ((access as any).demo) {
     return [{
       _id: "pay-demo",
-      extOrderId: "SUB-DEMO-2026-07",
-      status: "COMPLETED",
+      reference: "SUB-DEMO-2026-07",
+      provider: "STRIPE",
+      status: "PAID",
       amountGross: 1400,
       createdAt: new Date().toISOString(),
     }];
@@ -366,7 +429,6 @@ export async function getSuperadminDataset() {
     plans,
     recentPayments,
     recentWebhooks,
-    failedAttempts,
     recentAudit,
     featureOverrides,
   ] = await Promise.all([
@@ -379,7 +441,6 @@ export async function getSuperadminDataset() {
     Plan.find({}).sort({ monthlyGross: 1 }).lean(),
     Payment.find({}).sort({ createdAt: -1 }).limit(100).lean(),
     WebhookEvent.find({}).sort({ createdAt: -1 }).limit(100).lean(),
-    BillingAttempt.find({ status: "FAILED" }).sort({ attemptedAt: -1 }).limit(100).lean(),
     AuditLog.find({}).sort({ createdAt: -1 }).limit(100).lean(),
     FeatureOverride.find({}).lean(),
   ]);
@@ -410,7 +471,7 @@ export async function getSuperadminDataset() {
     plans,
     recentPayments,
     recentWebhooks,
-    failedAttempts,
+    failedAttempts: recentPayments.filter((payment: any) => payment.status === "FAILED"),
     recentAudit,
   };
 }
