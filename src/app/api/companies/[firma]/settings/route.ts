@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { FEATURE_KEYS } from "@/types/saas";
 import {
-  AuthError,
-  getRequestIdentity,
   requireCompanyMember,
   requireCompanyWriteIntent,
 } from "@/server/auth";
@@ -121,14 +119,9 @@ export async function PUT(
       );
     }
 
-    // The demo tenant has no membership records, so it cannot go through
-    // requireCompanyMember — but it must still not accept anonymous writes.
-    // `demoModeEnabled()` requires an explicit opt-in in production.
+    // The public demo is a disposable sandbox. Its in-memory changes do not
+    // touch a real company or MongoDB and may be reset by a deployment.
     if (bootstrap.company.id === "demo-company" && demoModeEnabled()) {
-      const identity = await getRequestIdentity();
-      if (!identity.userId) {
-        throw new AuthError("AUTH_REQUIRED", 401, "Zaloguj się, aby zmienić ustawienia demo.");
-      }
       const demoState = saveDemoState({
         ...input,
         privacyProfile: input.privacyProfile

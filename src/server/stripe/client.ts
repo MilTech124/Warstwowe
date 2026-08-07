@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import type { BillingMode, PackageCode } from "@/types/saas";
+import { applicationUrl } from "@/lib/siteUrl";
 
 let stripeClient: Stripe | null = null;
 
@@ -30,18 +31,10 @@ export function getStripe() {
   return stripeClient;
 }
 
-export function applicationUrl() {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-  const configuredIsLocal = configured
-    ? /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configured)
-    : false;
-  const isVercelProduction = process.env.VERCEL_ENV === "production";
-
-  if (configured && !(isVercelProduction && configuredIsLocal)) return configured;
-  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
-  if (vercelHost) return `https://${vercelHost.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
-  return configured || "http://127.0.0.1:3000";
-}
+// Definicja mieszka w lib/siteUrl, żeby metadane i sitemap mogły jej użyć bez
+// ładowania SDK Stripe. Re-eksport zachowuje dotychczasową ścieżkę importu,
+// a import lokalny — wywołania niżej w tym pliku.
+export { applicationUrl };
 
 function priceId(catalog: StripePlanCatalog, billingMode: BillingMode) {
   if (billingMode === "RECURRING_MONTHLY") return catalog.recurringMonthlyPriceId;

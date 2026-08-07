@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -12,6 +13,7 @@ import {
   Grid2X2Plus,
   Layers3,
   Lightbulb,
+  LayoutDashboard,
   Moon,
   PanelTop,
   Plus,
@@ -143,6 +145,12 @@ export function ControlPanel() {
               <h1>Konfigurator garażu</h1>
             </div>
           </div>
+          {access.company.slug === "demo" && (
+            <Link className="demo-panel-link" href="/demo/dashboard">
+              <LayoutDashboard aria-hidden="true" />
+              <span>Panel demo</span>
+            </Link>
+          )}
         </div>
       </div>
 

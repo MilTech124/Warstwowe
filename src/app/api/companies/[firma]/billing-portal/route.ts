@@ -3,6 +3,7 @@ import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
 import { Subscription } from "@/server/db/models";
 import { createStripePortalSession } from "@/server/stripe/client";
 import { apiError } from "@/server/apiError";
+import { demoModeEnabled, getConfiguratorBootstrap } from "@/server/services/companyService";
 
 export async function POST(
   request: NextRequest,
@@ -10,11 +11,12 @@ export async function POST(
 ) {
   try {
     const { firma } = await params;
-    const access: any = await requireCompanyMember(firma, ["OWNER"]);
-    requireCompanyWriteIntent(request, access);
-    if (access.company?.demo) {
+    const bootstrap = await getConfiguratorBootstrap(firma);
+    if (bootstrap?.company.id === "demo-company" && demoModeEnabled()) {
       return NextResponse.json({ error: "Portal Stripe nie jest dostępny w trybie demo." }, { status: 400 });
     }
+    const access: any = await requireCompanyMember(firma, ["OWNER"]);
+    requireCompanyWriteIntent(request, access);
     const subscription: any = await Subscription.findOne({ companyId: access.company._id });
     if (!subscription?.stripeCustomerId) {
       return NextResponse.json({ error: "Klient Stripe nie został jeszcze utworzony." }, { status: 409 });

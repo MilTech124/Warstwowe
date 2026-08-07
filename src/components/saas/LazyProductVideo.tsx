@@ -9,6 +9,7 @@ type LazyProductVideoProps = {
   eager?: boolean;
   autoPlay?: boolean;
   controls?: boolean;
+  poster?: string;
 };
 
 export function LazyProductVideo({
@@ -18,6 +19,7 @@ export function LazyProductVideo({
   eager = false,
   autoPlay = true,
   controls = false,
+  poster,
 }: LazyProductVideoProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -115,7 +117,9 @@ export function LazyProductVideo({
   return (
     <div
       ref={wrapperRef}
-      className={`pm-lazy-video ${isReady ? "is-ready" : ""} ${className}`.trim()}
+      className={`pm-lazy-video ${isReady ? "is-ready" : ""} ${poster ? "has-poster" : ""} ${className}`
+        .replace(/\s+/g, " ")
+        .trim()}
     >
       <span className="pm-video-loading" aria-hidden="true">
         <i />
@@ -135,6 +139,7 @@ export function LazyProductVideo({
       <video
         ref={videoRef}
         src={shouldLoad ? src : undefined}
+        poster={poster}
         muted
         loop
         playsInline

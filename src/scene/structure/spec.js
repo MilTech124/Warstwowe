@@ -69,6 +69,17 @@ export const SNOW_ZONES = [1, 2, 3, 4, 5];
 // w warstwie opisowej rozjechałaby się z tą przy pierwszej korekcie.
 export const SNOW_ZONE_SK_KN_M2 = { 1: 0.7, 2: 0.9, 3: 1.2, 4: 1.6, 5: 2.0 };
 
+// Podpowiedzi geograficzne do stref. Mieszkają obok tablicy sk z tego samego
+// powodu co ona: panel konstrukcji i strona główna pokazują je równolegle,
+// a dwie kopie rozjechałyby się przy pierwszej korekcie.
+export const SNOW_ZONE_HINTS = {
+  1: "zachodnia Polska",
+  2: "centralna Polska",
+  3: "wschód i podgórze",
+  4: "pogórze, Podhale",
+  5: "wysokie góry",
+};
+
 // Ciężar własny poszycia dachowego z łącznikami [kN/m²].
 export const ROOF_DEAD_LOAD_KN_M2 = 0.15;
 

@@ -4,12 +4,15 @@ import {
   BadgeCheck,
   BarChart3,
   Building2,
+  Calculator,
   Check,
   CirclePlay,
   FileText,
   Gauge,
   Layers3,
   LockKeyhole,
+  Mail,
+  MapPin,
   MousePointer2,
   Palette,
   PanelTop,
@@ -17,11 +20,13 @@ import {
   ShieldCheck,
   ShoppingCart,
   Sparkles,
+  Phone,
   UsersRound,
   WandSparkles,
   Zap,
 } from "lucide-react";
 import { getAvailablePlans } from "@/server/services/planService";
+import { OPERATOR } from "@/config/legal";
 import { ClerkMarketingActions } from "@/components/auth/ClerkMarketingActions";
 import { HeroProductVideo } from "@/components/saas/HeroProductVideo";
 import { LazyProductVideo } from "@/components/saas/LazyProductVideo";
@@ -36,6 +41,7 @@ import {
 } from "@/components/saas/LandingProductVisuals";
 import "./marketing-premium.css";
 import "./landing-product-visuals.css";
+import "./home-adaptations.css";
 
 const planContent: Record<string, { description: string; features: string[] }> = {
   STANDARD: {
@@ -114,8 +120,8 @@ export default async function HomePage() {
 
           <div className="pm-nav-links">
             <Link href="#mozliwosci">Możliwości</Link>
-            <Link href="#platforma">Platforma</Link>
-            <Link href="#jak-to-dziala">Jak to działa</Link>
+            <Link href="#wycena">Wycena</Link>
+            <Link href="#platforma">Panel firmy</Link>
             <Link href="#cennik">Cennik</Link>
           </div>
 
@@ -259,6 +265,55 @@ export default async function HomePage() {
         </div>
       </section>
 
+      <section className="pm-quote-section" id="wycena">
+        <div className="pm-container pm-quote-grid">
+          <div className="pm-quote-copy">
+            <span className="pm-section-kicker">Wycena bez Excela</span>
+            <h2>Cena liczy się z Twojego cennika.</h2>
+            <p>
+              Ten sam model, który klient widzi w 3D, dostarcza ilości materiałów do wyceny.
+              Ty ustawiasz stawki i reguły handlowe — system wykonuje resztę.
+            </p>
+            <ul>
+              <li><Check size={16} /><span>Stawki za <b>m², mb, kg i sztukę</b>, osobno dla modeli i grubości.</span></li>
+              <li><Check size={16} /><span>Własna <b>marża, robocizna, dostawa, VAT</b> i zaokrąglenie końcowej ceny.</span></li>
+              <li><Check size={16} /><span>Dopłaty za warianty, szerokości bram oraz wybraną strefę śniegową.</span></li>
+              <li><Check size={16} /><span>Brakująca stawka oznacza ofertę wstępną — nigdy przypadkowe <b>0,00 zł</b>.</span></li>
+            </ul>
+          </div>
+
+          <div className="pm-quote-stage" aria-label="Przykładowa automatyczna wycena">
+            <div className="pm-quote-windowbar">
+              <span><i /><i /><i /></span>
+              <b><Calculator size={13} /> Automatyczna wycena</b>
+              <em>AKTUALNA</em>
+            </div>
+            <div className="pm-quote-body">
+              <div className="pm-quote-meta">
+                <span><small>OBIEKT</small><b>Hala 12 × 24 m</b></span>
+                <span><small>CENNIK</small><b>Firmowy · 08/2026</b></span>
+              </div>
+              <div className="pm-quote-table">
+                <header><span>Pozycja</span><span>Ilość</span><span>Wartość</span></header>
+                <div><span>Płyty ścienne PIR 100</span><i /><small>182,4 m²</small><b>34 656 zł</b></div>
+                <div><span>Płyty dachowe PIR 120</span><i /><small>148,0 m²</small><b>31 080 zł</b></div>
+                <div><span>Konstrukcja stalowa</span><i /><small>3 108 kg</small><b>27 972 zł</b></div>
+                <div><span>Bramy, okna i dodatki</span><i /><small>8 szt.</small><b>12 240 zł</b></div>
+              </div>
+              <div className="pm-quote-rules">
+                <span>Marża <b>18%</b></span>
+                <span>Dostawa <b>1 900 zł</b></span>
+                <span>VAT <b>23%</b></span>
+              </div>
+              <div className="pm-quote-total">
+                <span><small>WARTOŚĆ OFERTY BRUTTO</small><b>131 622,30 zł</b></span>
+                <em>Gotowa do PDF <ArrowRight size={14} /></em>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="pm-long-demo-section" aria-labelledby="pelna-prezentacja-heading">
         <div className="pm-container">
           <div className="pm-long-demo-heading">
@@ -294,15 +349,15 @@ export default async function HomePage() {
         <div className="pm-container">
           <div className="pm-gallery-heading">
             <div>
-              <span className="pm-gallery-kicker"><Sparkles size={14} /> Zobacz cały produkt</span>
+              <span className="pm-gallery-kicker"><Sparkles size={14} /> Panel firmy</span>
               <h2>
-                To nie jest tylko konfigurator.
-                <span> To kompletny system sprzedaży.</span>
+                Wszystko pod kontrolą.
+                <span> Z jednego miejsca.</span>
               </h2>
             </div>
             <p>
-              Każda część platformy została zaprojektowana pod konkretną rolę:
-              klienta, handlowca, administratora firmy i operatora SaaS.
+              Z panelu administracyjnego obsługujesz zamówienia, ofertę, ceny, markę,
+              dokumenty, zespół i powiadomienia — bez udziału programisty.
             </p>
           </div>
 
@@ -356,9 +411,9 @@ export default async function HomePage() {
               </div>
               <div className="pm-showcase-overlay">
                 <span className="pm-showcase-type"><Gauge size={14} /> Dashboard firmy</span>
-                <h3>Sprzedaż uporządkowana od pierwszego dnia.</h3>
-                <p>Lejek, zamówienia, handlowcy i aktywność w jednym widoku.</p>
-                <div className="pm-showcase-tags"><span>CRM</span><span>Analityka</span><span>Zespół</span></div>
+                <h3>Każde zamówienie z pełną konfiguracją 3D.</h3>
+                <p>Numeracja, statusy, notatki, handlowcy, historia zmian i ponowne otwarcie projektu w jednym widoku.</p>
+                <div className="pm-showcase-tags"><span>Zamówienia</span><span>Snapshot 3D</span><span>Analityka</span></div>
               </div>
             </article>
 
@@ -398,9 +453,9 @@ export default async function HomePage() {
               </div>
               <div className="pm-showcase-overlay">
                 <span className="pm-showcase-type"><Palette size={14} /> Oferta i branding</span>
-                <h3>Administrator decyduje, co może skonfigurować klient.</h3>
-                <p>Kolory, presety, producenci i funkcje publikowane bez udziału programisty.</p>
-                <div className="pm-showcase-tags"><span>Draft</span><span>Preview</span><span>Publikacja</span></div>
+                <h3>Całą ofertę konfiguratora ustawiasz samodzielnie.</h3>
+                <p>Presety, kolory, producenci, modele bram, funkcje, logo i wygląd ofert PDF publikujesz bez udziału programisty.</p>
+                <div className="pm-showcase-tags"><span>Cennik</span><span>Oferta</span><span>Marka i PDF</span></div>
               </div>
             </article>
 
@@ -582,18 +637,56 @@ export default async function HomePage() {
       </section>
 
       <footer className="pm-footer">
-        <div className="pm-container pm-footer-content">
-          <Link className="pm-brand pm-brand-footer" href="/">
-            <span className="pm-brand-mark"><Layers3 size={19} /></span>
-            <span className="pm-brand-name">Warstwowe<span>3D</span></span>
-          </Link>
-          <p>Konfiguracja. Sprzedaż. Wzrost.</p>
-          <div>
-            <Link href="/logowanie">Logowanie</Link>
-            <Link href="/rejestracja">Rejestracja</Link>
-            <Link href="/demo">Demo</Link>
-            <Link href="/polityka-prywatnosci">Prywatność</Link>
-            <Link href="/polityka-cookies">Cookies</Link>
+        <div className="pm-footer-glow" aria-hidden="true" />
+        <div className="pm-container pm-footer-shell">
+          <div className="pm-footer-main">
+            <div className="pm-footer-about">
+              <Link className="pm-brand pm-brand-footer" href="/">
+                <span className="pm-brand-mark"><Layers3 size={20} /></span>
+                <span className="pm-brand-name">Warstwowe<span>3D</span></span>
+              </Link>
+              <p>
+                Konfigurator 3D, automatyczna wycena i obsługa zamówień dla firm
+                budujących hale oraz garaże z płyty warstwowej.
+              </p>
+              <span className="pm-footer-signature">Konfiguracja. Wycena. Sprzedaż.</span>
+            </div>
+
+            <nav className="pm-footer-column" aria-label="Produkt">
+              <strong>Produkt</strong>
+              <Link href="#mozliwosci">Możliwości</Link>
+              <Link href="#wycena">Automatyczna wycena</Link>
+              <Link href="#platforma">Panel firmy</Link>
+              <Link href="/demo">Demo 3D</Link>
+              <Link href="#cennik">Pakiety i ceny</Link>
+            </nav>
+
+            <nav className="pm-footer-column" aria-label="Konto">
+              <strong>Konto</strong>
+              <Link href="/rejestracja">Rozpocznij trial</Link>
+              <Link href="/logowanie">Zaloguj się</Link>
+              <Link href="/onboarding">Utwórz firmę</Link>
+              <Link href="/polityka-prywatnosci">Polityka prywatności</Link>
+              <Link href="/polityka-cookies">Polityka cookies</Link>
+            </nav>
+
+            <div className="pm-footer-column pm-footer-contact">
+              <strong>Kontakt</strong>
+              <a href={`mailto:${OPERATOR.email}`}>
+                <Mail size={15} /> <span>{OPERATOR.email}</span>
+              </a>
+              <a href={`tel:${OPERATOR.phone.replace(/\s/g, "")}`}>
+                <Phone size={15} /> <span>{OPERATOR.phone}</span>
+              </a>
+              <span className="pm-footer-address">
+                <MapPin size={15} /> <span>{OPERATOR.address}</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="pm-footer-bottom">
+            <p>© {new Date().getFullYear()} {OPERATOR.brand}. Wszelkie prawa zastrzeżone.</p>
+            <p>{OPERATOR.legalName} · NIP {OPERATOR.taxId}</p>
           </div>
         </div>
       </footer>

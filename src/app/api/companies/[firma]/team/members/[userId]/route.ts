@@ -4,6 +4,7 @@ import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
 import { CompanyMembership } from "@/server/db/models";
 import { writeAudit } from "@/server/audit";
 import { apiError } from "@/server/apiError";
+import { demoModeEnabled, getConfiguratorBootstrap } from "@/server/services/companyService";
 
 const roleSchema = z.object({ role: z.enum(["ADMIN", "SALESPERSON"]) });
 
@@ -26,6 +27,10 @@ export async function PATCH(
   try {
     const { firma, userId: membershipId } = await params;
     const { role } = roleSchema.parse(await request.json());
+    const bootstrap = await getConfiguratorBootstrap(firma);
+    if (bootstrap?.company.id === "demo-company" && demoModeEnabled()) {
+      return NextResponse.json({ membership: { id: membershipId, role } });
+    }
     const { access, company, membership } = await getContext(request, firma, membershipId);
     const beforeRole = membership.role;
     membership.role = role;
@@ -52,6 +57,10 @@ export async function DELETE(
 ) {
   try {
     const { firma, userId: membershipId } = await params;
+    const bootstrap = await getConfiguratorBootstrap(firma);
+    if (bootstrap?.company.id === "demo-company" && demoModeEnabled()) {
+      return NextResponse.json({ ok: true });
+    }
     const { access, company, membership } = await getContext(request, firma, membershipId);
     const before = { clerkUserId: membership.clerkUserId, email: membership.email, role: membership.role };
     await membership.deleteOne();

@@ -4,7 +4,7 @@ import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
 import { CompanyMembership } from "@/server/db/models";
 import { sendTransactionalEmail } from "@/server/email/smtp";
 import { applicationUrl } from "@/server/stripe/client";
-import { getConfiguratorBootstrap } from "@/server/services/companyService";
+import { demoModeEnabled, getConfiguratorBootstrap } from "@/server/services/companyService";
 import { writeAudit } from "@/server/audit";
 import { apiError } from "@/server/apiError";
 
@@ -19,17 +19,17 @@ export async function POST(
 ) {
   try {
     const { firma } = await params;
-    const access = await requireCompanyMember(firma, ["OWNER", "ADMIN"]);
-    requireCompanyWriteIntent(request, access);
     const input = inviteSchema.parse(await request.json());
     const bootstrap = await getConfiguratorBootstrap(firma);
     if (!bootstrap) throw new Error("Firma nie istnieje.");
-    if ((access as any).company?.demo || bootstrap.company.id === "demo-company") {
+    if (bootstrap.company.id === "demo-company" && demoModeEnabled()) {
       return NextResponse.json({
         invitation: { id: `demo-invite-${Date.now()}`, email: input.email, role: input.role },
         emailSent: true,
       });
     }
+    const access = await requireCompanyMember(firma, ["OWNER", "ADMIN"]);
+    requireCompanyWriteIntent(request, access);
     const company = (access as any).company;
     const membershipCount = await CompanyMembership.countDocuments({
       companyId: company._id,

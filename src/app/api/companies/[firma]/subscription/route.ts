@@ -12,6 +12,7 @@ import {
   getStripe,
 } from "@/server/stripe/client";
 import { apiError } from "@/server/apiError";
+import { demoModeEnabled, getConfiguratorBootstrap } from "@/server/services/companyService";
 
 const schema = z.object({
   action: z.literal("CHANGE_PACKAGE"),
@@ -24,12 +25,13 @@ export async function PATCH(
 ) {
   try {
     const { firma } = await params;
+    const input = schema.parse(await request.json());
+    const bootstrap = await getConfiguratorBootstrap(firma);
+    if (bootstrap?.company.id === "demo-company" && demoModeEnabled()) {
+      return NextResponse.json({ message: `Zmiana pakietu na ${input.packageCode} została zasymulowana w trybie demo.` });
+    }
     const access: any = await requireCompanyMember(firma, ["OWNER"]);
     requireCompanyWriteIntent(request, access);
-    const input = schema.parse(await request.json());
-    if (access.company?.demo) {
-      return NextResponse.json({ message: "Zmiana została zasymulowana w trybie demo." });
-    }
     const companyId = access.company._id;
     const subscription: any = await Subscription.findOne({ companyId });
     if (!subscription) throw new Error("Firma nie ma subskrypcji.");

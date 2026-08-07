@@ -11,15 +11,7 @@ import { roleLabel } from "@/config/steelProfiles";
 import { buildStructure } from "@/scene/structure/buildStructure";
 import { STRUCTURE_CLASSES } from "@/scene/structure/classes";
 import { structureInputs, structureSignature } from "@/scene/structure/inputs";
-import { REINFORCEMENT_LEVELS, SNOW_ZONES } from "@/scene/structure/spec";
-
-const SNOW_ZONE_HINTS = {
-  1: "zachodnia Polska",
-  2: "centralna Polska",
-  3: "wschód i podgórze",
-  4: "pogórze, Podhale",
-  5: "wysokie góry",
-};
+import { REINFORCEMENT_LEVELS, SNOW_ZONE_HINTS, SNOW_ZONES } from "@/scene/structure/spec";
 
 export function StructurePanel({ config, updateStructure }) {
   const inputs = structureInputs(config);
