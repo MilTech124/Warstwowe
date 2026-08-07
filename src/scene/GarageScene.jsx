@@ -301,6 +301,23 @@ function ViewerPresetOverlay() {
   );
 }
 
+const VIEWER_WATERMARK_MARKS = 6;
+
+function ViewerWatermark({ branding }) {
+  const logoUrl = branding?.logoUrl;
+  const label = branding?.name || "Konfigurator";
+
+  return (
+    <div className={`viewer-watermark ${logoUrl ? "has-logo" : "text-fallback"}`} aria-hidden="true">
+      {Array.from({ length: VIEWER_WATERMARK_MARKS }, (_, index) => (
+        logoUrl
+          ? <img key={index} src={logoUrl} alt="" draggable="false" />
+          : <span key={index}>{label}</span>
+      ))}
+    </div>
+  );
+}
+
 export function GarageScene() {
   const storedConfig = useConfiguratorStore((state) => state.config);
   const access = useConfiguratorAccess();
@@ -366,6 +383,7 @@ export function GarageScene() {
   if (glState !== "ok") {
     return (
       <div className="scene-shell">
+        <ViewerWatermark branding={access.company.branding} />
         <SceneUnavailable
           reason={glState}
           onRetry={() => {
@@ -379,6 +397,7 @@ export function GarageScene() {
 
   return (
     <div className="scene-shell">
+      <ViewerWatermark branding={access.company.branding} />
       <Canvas
         key={canvasKey}
         shadows={qualityProfile.softShadows ? "soft" : "percentage"}

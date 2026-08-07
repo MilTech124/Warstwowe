@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCompanyMember, requireCompanyWriteIntent } from "@/server/auth";
 import { apiError } from "@/server/apiError";
-import { getConfiguratorBootstrap } from "@/server/services/companyService";
+import { demoModeEnabled, getConfiguratorBootstrap } from "@/server/services/companyService";
 import { savePriceList } from "@/server/services/priceListService";
+import { saveDemoPriceList } from "@/server/demoState";
 
 const rate = z.number().finite().min(0);
 /** Drzwi i okna — cena za sztukę. */
@@ -91,9 +92,6 @@ export async function PUT(
     const { firma } = await params;
     const input = pricingSchema.parse(await request.json());
 
-    const access = await requireCompanyMember(firma, ["OWNER", "ADMIN"]);
-    requireCompanyWriteIntent(request, access);
-
     const bootstrap = await getConfiguratorBootstrap(firma);
     if (!bootstrap?.capabilities.pricing) {
       return NextResponse.json(
@@ -101,6 +99,19 @@ export async function PUT(
         { status: 403 },
       );
     }
+
+    if (bootstrap.company.id === "demo-company" && demoModeEnabled()) {
+      return NextResponse.json({
+        priceList: saveDemoPriceList({
+          rates: input.rates,
+          showToCustomer: input.showToCustomer,
+          publish: input.publish,
+        }),
+      });
+    }
+
+    const access = await requireCompanyMember(firma, ["OWNER", "ADMIN"]);
+    requireCompanyWriteIntent(request, access);
 
     const result = await savePriceList({
       companyId: (access as any).company._id,

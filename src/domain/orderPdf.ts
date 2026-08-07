@@ -4,14 +4,13 @@ export function orderPdfGenerationAvailable({
   readOnly = false,
   accessActive,
   capability,
-  demo = false,
 }: {
   readOnly?: boolean;
   accessActive: boolean;
   capability: boolean;
   demo?: boolean;
 }) {
-  return !readOnly && !demo && accessActive && capability;
+  return !readOnly && accessActive && capability;
 }
 
 export function orderPdfUploadError(file: { type: string; size: number } | null) {

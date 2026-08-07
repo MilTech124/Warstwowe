@@ -18,7 +18,7 @@ import { PACKAGE_DEFINITIONS } from "@/domain/plans";
 import { resolveEntitlements } from "@/domain/entitlements";
 import { getPublishedPriceList } from "@/server/services/priceListService";
 import { connectMongo } from "@/server/db/connection";
-import { getDemoDraftState, getDemoState } from "@/server/demoState";
+import { getDemoDraftState, getDemoPublishedPriceList, getDemoState } from "@/server/demoState";
 import {
   CatalogManufacturer,
   CatalogProduct,
@@ -45,6 +45,10 @@ const DEFAULT_SETTINGS: CompanyConfiguratorSettings = {
   version: 1,
   published: true,
   manuallyEnabled: true,
+  publicAccessLimitEnabled: false,
+  publicAccessLimitMinutes: 60,
+  publicAccessCodeConfigured: false,
+  orderActionLabel: "inquiry",
   defaultPresetId: "single_garage",
   allowedPresetIds: Object.keys(PRESETS),
   allowedRoofTypeIds: Object.keys(ROOF_TYPES),
@@ -187,6 +191,7 @@ export const DEMO_COMPANY_ID = "demo-company";
 export function demoBootstrap(): ConfiguratorBootstrap {
   const plan = PACKAGE_DEFINITIONS.DIAMOND;
   const demoState = getDemoState();
+  const priceList = getDemoPublishedPriceList();
   return {
     company: {
       id: DEMO_COMPANY_ID,
@@ -208,6 +213,9 @@ export function demoBootstrap(): ConfiguratorBootstrap {
     seatLimit: plan.seatLimit,
     settings: { ...DEFAULT_SETTINGS, ...demoState.settings },
     catalog: staticCatalog(),
+    priceList: priceList.showToCustomer
+      ? { version: priceList.version, currency: priceList.currency, rates: priceList.rates }
+      : null,
   };
 }
 
@@ -234,6 +242,10 @@ function settingsFromDocument(document: Record<string, unknown> | null): Company
     version: Number(document.publishedVersion || document.version || 1),
     published: Boolean(document.published),
     manuallyEnabled: document.manuallyEnabled !== false,
+    publicAccessLimitEnabled: document.publicAccessLimitEnabled === true,
+    publicAccessLimitMinutes: Math.min(240, Math.max(15, Number(document.publicAccessLimitMinutes || 60))),
+    publicAccessCodeConfigured: Boolean(document.publicAccessCodeHash),
+    orderActionLabel: document.orderActionLabel === "order" ? "order" : "inquiry",
     defaultPresetId: String(document.defaultPresetId || "single_garage"),
     allowedPresetIds: Array.isArray(document.allowedPresetIds) ? document.allowedPresetIds.map(String) : [],
     allowedRoofTypeIds: Array.isArray(document.allowedRoofTypeIds) && document.allowedRoofTypeIds.length
@@ -577,7 +589,7 @@ export async function getCompanySettingsEditorBootstrap(
 
   const document: any = await CompanySettings.findOne({
     companyId: publishedBootstrap.company.id,
-  }).lean();
+  }).select("+publicAccessCodeHash").lean();
   const company: any = await Company.findById(publishedBootstrap.company.id).lean();
   const draft = document?.draft || {};
   const draftSettings = {
@@ -585,6 +597,7 @@ export async function getCompanySettingsEditorBootstrap(
     ...(draft.settings || {}),
     version: Number(document?.version || publishedBootstrap.settings.version),
     published: publishedBootstrap.settings.published,
+    publicAccessCodeConfigured: Boolean(document?.publicAccessCodeHash),
   };
   const available = publishedBootstrap.availableCapabilities || publishedBootstrap.capabilities;
   const prefilledPrivacy = emptyPrivacyProfile({

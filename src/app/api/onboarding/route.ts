@@ -146,6 +146,7 @@ export async function POST(request: NextRequest) {
             publishedVersion: 1,
             published: true,
             manuallyEnabled: true,
+            orderActionLabel: "inquiry",
             defaultPresetId: "single_garage",
             allowedPresetIds: ["single_garage", "double_garage", "hall", "large_hall"],
             allowedPanelManufacturerIds: ["default_panels", "steelprofil"],

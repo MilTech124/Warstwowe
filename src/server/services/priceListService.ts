@@ -2,6 +2,7 @@ import { normalizePriceList } from "@/domain/pricing/priceList";
 import { writeAudit } from "@/server/audit";
 import { connectMongo } from "@/server/db/connection";
 import { CompanyPriceList, CompanyPriceListVersion } from "@/server/db/models";
+import { getDemoPriceListEditorState } from "@/server/demoState";
 
 /**
  * connectMongo() rzuca przy problemie z połączeniem (DNS, chwilowa
@@ -58,6 +59,7 @@ export async function getPriceListVersion(companyId: unknown, version: number) {
 
 /** Szkic + wersja opublikowana, na potrzeby edytora cennika w panelu. */
 export async function getPriceListEditorBootstrap(companyId: unknown) {
+  if (String(companyId) === "demo-company") return getDemoPriceListEditorState();
   if (!(await mongoReady())) return EMPTY_PRICE_LIST_EDITOR_STATE;
   const document: any = await CompanyPriceList.findOne({ companyId }).lean().catch(() => null);
   if (!document) return EMPTY_PRICE_LIST_EDITOR_STATE;

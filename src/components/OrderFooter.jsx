@@ -12,7 +12,6 @@ const ORDER_FIELDS = [
   { key: "customerAddress", label: "Adres", placeholder: "Ulica, kod, miejscowość" },
   { key: "phone", label: "Telefon", placeholder: "+48 …" },
   { key: "email", label: "E-mail", placeholder: "adres@example.com", type: "email" },
-  { key: "orderNo", label: "Nr zamówienia", placeholder: "nadawany automatycznie", readOnly: true },
 ];
 
 export function OrderFooter() {
@@ -27,6 +26,7 @@ export function OrderFooter() {
   const updateOrder = useConfiguratorStore((state) => state.updateOrder);
   const busy = Boolean(status);
   const privacyProfile = access.company.privacyProfile;
+  const actionLabel = access.settings.orderActionLabel === "order" ? "Zamów" : "Wyślij zapytanie";
 
   async function handleSubmitOrder() {
     setError(null);
@@ -111,6 +111,8 @@ export function OrderFooter() {
               <input
                 type="checkbox"
                 checked={privacyAcknowledged}
+                required
+                aria-required="true"
                 onChange={(event) => setPrivacyAcknowledged(event.target.checked)}
               />
               <span>
@@ -118,7 +120,7 @@ export function OrderFooter() {
                 <Link href={`/${access.company.slug}/polityka-prywatnosci`} target="_blank">
                   informacją o przetwarzaniu danych
                 </Link>
-                .
+                {" "}i przekazuję podane dane w celu obsługi tego zamówienia lub zapytania. (Wymagane)
               </span>
             </label>
           ) : (
@@ -136,10 +138,10 @@ export function OrderFooter() {
         type="button"
         className="order-submit"
         onClick={handleSubmitOrder}
-        disabled={busy || Boolean(receipt) || !privacyProfile}
+        disabled={busy || Boolean(receipt) || !privacyProfile || !privacyAcknowledged}
       >
         {busy ? <Loader2 className="h-4 w-4 order-spinner" /> : receipt ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-        <span>{receipt ? `Zapisano ${receipt.number}` : busy ? status.label : "Wyślij zamówienie"}</span>
+        <span>{receipt ? `Zapisano ${receipt.number}` : busy ? status.label : actionLabel}</span>
       </button>
     </div>
   );

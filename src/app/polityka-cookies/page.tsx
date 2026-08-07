@@ -59,7 +59,7 @@ export default function CookiesPolicyPage() {
 
       <LegalSection title="4. Zarządzanie ustawieniami">
         <p>
-          Użyj przycisku „Ustawienia cookies” w lewym dolnym rogu strony, aby zmienić lub wycofać
+          Użyj przycisku „Ustawienia cookies” w prawym dolnym rogu strony, aby zmienić lub wycofać
           zgodę. Możesz też usuwać i blokować cookies w ustawieniach przeglądarki. Zablokowanie cookies
           niezbędnych może uniemożliwić logowanie, zapamiętanie decyzji lub bezpieczną płatność.
           Pytania możesz przesłać na <a href={`mailto:${OPERATOR.email}`}>{OPERATOR.email}</a>.

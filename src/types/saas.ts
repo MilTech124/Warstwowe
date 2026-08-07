@@ -89,6 +89,11 @@ export interface CompanyConfiguratorSettings {
   version: number;
   published: boolean;
   manuallyEnabled: boolean;
+  publicAccessLimitEnabled: boolean;
+  publicAccessLimitMinutes: number;
+  /** Only exposed in the authenticated settings editor; never contains the code. */
+  publicAccessCodeConfigured?: boolean;
+  orderActionLabel: "order" | "inquiry";
   defaultPresetId: string;
   allowedPresetIds: string[];
   allowedRoofTypeIds: string[];
@@ -157,8 +162,8 @@ export interface OrderCreateInput {
   notes?: string;
   /** @deprecated Kept only for requests sent by older clients. */
   consent?: boolean;
-  privacyNoticeAccepted?: boolean;
-  privacyNoticeVersion?: number;
+  privacyNoticeAccepted: true;
+  privacyNoticeVersion: number;
   settingsVersion: number;
   configuration: Record<string, unknown> & { schemaVersion: number };
 }

@@ -7,6 +7,7 @@ import { OrderConfigurationDetails } from "@/components/dashboard/OrderConfigura
 import { getCompanyOrder, getCompanyTeam } from "@/server/services/dashboardService";
 import { getConfiguratorBootstrap } from "@/server/services/companyService";
 import { orderPdfGenerationAvailable } from "@/domain/orderPdf";
+import { quoteWithManualPrice } from "@/domain/pricing/manualPrice";
 import { QuoteIncompleteBadge, QuoteTable } from "@/components/dashboard/QuoteTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,7 @@ export default async function OrderDetailsPage({
   ]);
   if (!data) notFound();
   const order = data.order as any;
+  const effectiveQuote = quoteWithManualPrice(order.quote ?? null, order.manualPrice ?? null);
   const canGeneratePdf = orderPdfGenerationAvailable({
     readOnly: data.readOnly,
     demo: bootstrap?.company.id === "demo-company",
@@ -158,7 +160,7 @@ export default async function OrderDetailsPage({
             </CardContent>
           </Card>
 
-          {order.quote && (
+          {effectiveQuote && (
             <Card>
               <CardHeader>
                 <span className="text-[11px] font-semibold tracking-[0.13em] text-primary uppercase">
@@ -173,11 +175,17 @@ export default async function OrderDetailsPage({
                   {order.priceListVersion != null && (
                     <Badge variant="secondary">Cennik v{order.priceListVersion}</Badge>
                   )}
-                  <QuoteIncompleteBadge quote={order.quote} />
+                  {order.manualPrice && <Badge>Korekta ręczna</Badge>}
+                  <QuoteIncompleteBadge quote={effectiveQuote as never} />
                 </CardAction>
               </CardHeader>
               <CardContent>
-                <QuoteTable quote={order.quote} />
+                {order.manualPrice?.reason && (
+                  <p className="mb-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+                    Powód korekty: {order.manualPrice.reason}
+                  </p>
+                )}
+                <QuoteTable quote={effectiveQuote as never} />
               </CardContent>
             </Card>
           )}
@@ -259,6 +267,8 @@ export default async function OrderDetailsPage({
             currentStatus={order.status}
             currentAssignee={order.assignedClerkUserId}
             team={team as any[]}
+            automaticTotalGross={bootstrap?.capabilities.pricing ? order.quote?.totalGross ?? null : null}
+            currentManualPrice={order.manualPrice ?? null}
           />
         )}
       </div>

@@ -87,6 +87,11 @@ const companySettingsSchema = new Schema(
     publishedVersion: { type: Number, default: 0 },
     published: { type: Boolean, default: false },
     manuallyEnabled: { type: Boolean, default: true },
+    publicAccessLimitEnabled: { type: Boolean, default: false },
+    publicAccessLimitMinutes: { type: Number, default: 60, min: 15, max: 240 },
+    // The producer code is never selected by ordinary bootstrap/editor queries.
+    publicAccessCodeHash: { type: String, default: null, select: false },
+    orderActionLabel: { type: String, enum: ["order", "inquiry"], default: "inquiry" },
     defaultPresetId: { type: String, default: "single_garage" },
     allowedPresetIds: { type: [String], default: ["single_garage", "double_garage"] },
     allowedRoofTypeIds: { type: [String], default: [] },
@@ -109,6 +114,24 @@ const companySettingsSchema = new Schema(
   },
   timestamps,
 );
+
+/**
+ * One short-lived row per tenant and public IP. The row records only when the
+ * free window started; no heartbeats or per-second writes are needed.
+ */
+const configuratorUsageSchema = new Schema(
+  {
+    companyId: { type: Schema.Types.ObjectId, required: true, index: true, ref: "Company" },
+    ipHash: { type: String, required: true },
+    startedAt: { type: Date, required: true, default: Date.now },
+    expiresAt: { type: Date, required: true },
+    failedCodeAttempts: { type: Number, default: 0 },
+    codeLockedUntil: Date,
+  },
+  { timestamps: true, minimize: false },
+);
+configuratorUsageSchema.index({ companyId: 1, ipHash: 1 }, { unique: true });
+configuratorUsageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const planSchema = new Schema(
   {
@@ -247,6 +270,16 @@ const orderSchema = new Schema(
     /** Wersja cennika użyta do wyceny i sama wycena — snapshot, nie referencja. */
     priceListVersion: { type: Number, default: null },
     quote: { type: Schema.Types.Mixed, default: null },
+    /** Ręczna cena końcowa nie nadpisuje automatycznej wyceny z cennika. */
+    manualPrice: {
+      type: new Schema({
+        totalGross: { type: Number, required: true, min: 0 },
+        reason: { type: String, default: null },
+        updatedAt: { type: Date, required: true },
+        updatedBy: { type: String, default: null },
+      }, { _id: false }),
+      default: null,
+    },
     pdfBlobPath: String,
     submittedAt: { type: Date, default: Date.now, index: true },
   },
@@ -433,6 +466,8 @@ export const Company = models.Company || model("Company", companySchema);
 export const CompanyMembership =
   models.CompanyMembership || model("CompanyMembership", companyMembershipSchema);
 export const CompanySettings = models.CompanySettings || model("CompanySettings", companySettingsSchema);
+export const ConfiguratorUsage =
+  models.ConfiguratorUsage || model("ConfiguratorUsage", configuratorUsageSchema);
 export const CompanyPriceList =
   models.CompanyPriceList || model("CompanyPriceList", companyPriceListSchema);
 export const CompanyPriceListVersion =

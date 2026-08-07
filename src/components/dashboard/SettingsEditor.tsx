@@ -5,7 +5,9 @@ import {
   BellRing,
   Building2,
   Check,
+  Clock3,
   Eye,
+  KeyRound,
   Layers3,
   Loader2,
   PackageCheck,
@@ -72,6 +74,7 @@ const requiredLists: Array<{ field: keyof CompanyConfiguratorSettings; label: st
 const sectionLinks = [
   { id: "branding", label: "Branding" },
   { id: "prywatnosc", label: "Prywatność" },
+  { id: "ochrona", label: "Ochrona dostępu" },
   { id: "dostepnosc", label: "Funkcje" },
   { id: "oferta", label: "Oferta" },
   { id: "otwory", label: "Otwory" },
@@ -198,6 +201,7 @@ function SubGroup({ title, children }: { title: string; children: React.ReactNod
 
 export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap }) {
   const [settings, setSettings] = useState(bootstrap.settings);
+  const [accessCode, setAccessCode] = useState("");
   const [branding, setBranding] = useState(bootstrap.company.branding);
   const [privacyProfile, setPrivacyProfile] = useState(
     bootstrap.company.privacyProfile || {
@@ -276,6 +280,9 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
 
   function validate(publish: boolean) {
     if (branding.name.trim().length < 2) return "Nazwa marki musi mieć co najmniej 2 znaki.";
+    if (publish && accessCode.trim() && accessCode.trim().length < 6) {
+      return "Nowy kod dostępu musi mieć co najmniej 6 znaków.";
+    }
     for (const item of requiredLists) {
       if (!Array.isArray(settings[item.field]) || (settings[item.field] as string[]).length === 0) {
         return `Wybierz co najmniej jeden: ${item.label}.`;
@@ -283,6 +290,14 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
     }
     if (!settings.allowedPresetIds.includes(settings.defaultPresetId)) {
       return "Preset domyślny musi być włączony.";
+    }
+    if (
+      publish
+      && settings.publicAccessLimitEnabled
+      && !settings.publicAccessCodeConfigured
+      && accessCode.trim().length < 6
+    ) {
+      return "Ustaw kod dostępu składający się z co najmniej 6 znaków.";
     }
     if (
       settings.allowedOpeningKinds.includes("window")
@@ -361,11 +376,18 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
       const response = await fetch(`/api/companies/${bootstrap.company.slug}/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings, branding, privacyProfile, publish }),
+        body: JSON.stringify({
+          settings,
+          branding,
+          privacyProfile,
+          publish,
+          accessCode: publish && accessCode.trim() ? accessCode.trim() : undefined,
+        }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Nie udało się zapisać ustawień.");
       setSettings(result.settings);
+      if (publish) setAccessCode("");
       if (result.privacyProfile) setPrivacyProfile(result.privacyProfile);
       setDirty(false);
       toast.success(
@@ -530,6 +552,97 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
         </Section>
 
         <Section
+          id="ochrona"
+          title="Ochrona publicznego konfiguratora"
+          description="Jedna lekka sesja na firmę i adres IP, bez ciągłej synchronizacji z serwerem."
+          icon={KeyRound}
+        >
+          <Alert className="border-primary/25 bg-primary/5">
+            <Clock3 size={17} />
+            <AlertTitle>Minimalny ruch i automatyczne sprzątanie</AlertTitle>
+            <AlertDescription>
+              Serwer zapisuje tylko moment pierwszej interakcji. Odświeżenie strony i tryb incognito
+              nie zerują czasu dla tego samego IP, a tymczasowy wpis usuwa się automatycznie po 30 dniach.
+            </AlertDescription>
+          </Alert>
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
+            <span className="grid gap-0.5">
+              <strong className="text-sm font-semibold">Limit czasowy dla gości</strong>
+              <span className="text-xs text-muted-foreground">
+                Po wykorzystaniu czasu klient podaje kod ustalony przez Twoją firmę.
+              </span>
+            </span>
+            <Switch
+              aria-label="Limit czasowy dla gości"
+              checked={settings.publicAccessLimitEnabled}
+              onCheckedChange={() =>
+                changeSettings({
+                  ...settings,
+                  publicAccessLimitEnabled: !settings.publicAccessLimitEnabled,
+                })
+              }
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="public-access-minutes">Bezpłatny czas</Label>
+              <div className="relative">
+                <Input
+                  id="public-access-minutes"
+                  type="number"
+                  min={15}
+                  max={240}
+                  step={15}
+                  value={settings.publicAccessLimitMinutes}
+                  disabled={!settings.publicAccessLimitEnabled}
+                  className="pr-16"
+                  onChange={(event) =>
+                    changeSettings({
+                      ...settings,
+                      publicAccessLimitMinutes: Math.min(
+                        240,
+                        Math.max(15, Number(event.target.value) || 60),
+                      ),
+                    })
+                  }
+                />
+                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
+                  minut
+                </span>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="public-access-code">Kod firmy</Label>
+              <Input
+                id="public-access-code"
+                type="password"
+                autoComplete="new-password"
+                minLength={6}
+                maxLength={64}
+                value={accessCode}
+                disabled={!settings.publicAccessLimitEnabled}
+                placeholder={
+                  settings.publicAccessCodeConfigured
+                    ? "Kod jest ustawiony — wpisz, aby zmienić"
+                    : "Minimum 6 znaków"
+                }
+                onChange={(event) => {
+                  setAccessCode(event.target.value);
+                  setDirty(true);
+                  setValidationError(null);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Kod jest haszowany. Zmiana kodu unieważni wcześniejsze odblokowania i zacznie działać po publikacji.
+              </p>
+            </div>
+          </div>
+        </Section>
+
+        <Section
           id="dostepnosc"
           title="Dostępność i funkcje"
           description="Firma może zawęzić funkcje swojego pakietu, ale nie rozszerzyć go."
@@ -549,6 +662,27 @@ export function SettingsEditor({ bootstrap }: { bootstrap: ConfiguratorBootstrap
                 changeSettings({ ...settings, manuallyEnabled: !settings.manuallyEnabled })
               }
             />
+          </div>
+
+          <div className="grid max-w-sm gap-2">
+            <Label htmlFor="order-action-label">Napis w panelu zamówienia</Label>
+            <Select
+              value={settings.orderActionLabel}
+              onValueChange={(value: "order" | "inquiry") =>
+                changeSettings({ ...settings, orderActionLabel: value })
+              }
+            >
+              <SelectTrigger id="order-action-label" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="inquiry">Wyślij zapytanie</SelectItem>
+                <SelectItem value="order">Zamów</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Ten napis pojawi się na głównym przycisku wysyłki w konfiguratorze.
+            </p>
           </div>
 
           <div className="divide-y divide-border rounded-xl border border-border">

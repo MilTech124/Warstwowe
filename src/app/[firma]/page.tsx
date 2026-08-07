@@ -40,7 +40,7 @@ export default async function CompanyConfiguratorPage({
   return (
     <>
       {preview === "settings" && <div className="settings-preview-banner">Podgląd prywatnego szkicu — klienci nadal widzą ostatnią opublikowaną wersję.</div>}
-      <App bootstrap={bootstrap} />
+      <App bootstrap={bootstrap} accessControlDisabled={preview === "settings"} />
     </>
   );
 }

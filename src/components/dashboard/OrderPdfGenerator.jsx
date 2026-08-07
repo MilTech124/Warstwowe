@@ -21,6 +21,7 @@ import { useConfiguratorStoreApi } from "@/store/configuratorStore";
  *   contractor?: object | null,
  *   hasPdf?: boolean,
  *   autoStart?: boolean,
+ *   demo?: boolean,
  *   portalId?: string,
  * }} props
  */
@@ -31,6 +32,7 @@ export function OrderPdfGenerator({
   contractor = null,
   hasPdf,
   autoStart = false,
+  demo = false,
   portalId = "order-preview-pdf-actions",
 }) {
   const router = useRouter();
@@ -61,8 +63,15 @@ export function OrderPdfGenerator({
         quote,
         contractor,
         catalog,
-        download: false,
+        download: demo,
       });
+
+      if (demo) {
+        setStatus(null);
+        toast.success("PDF zamówienia demo został wygenerowany i pobrany.");
+        if (autoStart) router.replace(pathname);
+        return;
+      }
 
       setStatus({ phase: "upload", label: "Zapisywanie PDF…" });
       const form = new FormData();
@@ -85,7 +94,7 @@ export function OrderPdfGenerator({
     // `contractor` i `quote` to obiekty z serwera — nowa referencja przy każdym
     // renderze. Tu jest to nieszkodliwe: `generate` odpala się z kliknięcia albo
     // z efektu zabezpieczonego `autoStarted`, więc zmiana referencji nic nie robi.
-  }, [autoStart, catalog, contractor, orderId, pathname, quote, router, slug, status, storeApi]);
+  }, [autoStart, catalog, contractor, demo, orderId, pathname, quote, router, slug, status, storeApi]);
 
   useEffect(() => {
     if (!autoStart || autoStarted.current || !portalTarget) return;

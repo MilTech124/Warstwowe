@@ -24,55 +24,8 @@ import {
   safeHexColor,
 } from "@/lib/branding";
 import { DEMO_PRIVACY_PROFILE } from "@/config/legal";
-import { getPresetDefaults, getPresetOpenings, PRESETS } from "@/config/catalog";
-import { DEFAULT_FRONT_PROJECTION } from "@/config/frontProjection";
-import { DEFAULT_LIGHTING } from "@/config/lighting";
-import { DEFAULT_STRUCTURE } from "@/scene/structure/inputs";
-
-function demoConfigurationSnapshot() {
-  const preset = "double_garage";
-  const defaults = getPresetDefaults(preset);
-  return {
-    schemaVersion: 12,
-    preset,
-    dimensions: { ...PRESETS[preset].dimensions, lengthM: 7 },
-    viewMode: "full",
-    cameraMode: "orbit",
-    showDimensions: true,
-    roof: { ...defaults.roof, overhangM: { ...defaults.roof.overhangM } },
-    cladding: { ...defaults.cladding },
-    flashings: { ...defaults.flashings },
-    gutters: { ...defaults.gutters },
-    frontProjection: { ...DEFAULT_FRONT_PROJECTION, depthM: 0.65 },
-    lighting: { ...DEFAULT_LIGHTING, interiorLighting: true, gateLamps: true },
-    structure: { ...DEFAULT_STRUCTURE },
-    openings: getPresetOpenings(preset),
-  };
-}
-
-const demoOrders = [
-  {
-    _id: "demo-order-1",
-    number: "DEMO/2026/0003",
-    status: "NEW",
-    customer: { name: "Jan Kowalski", email: "jan@example.pl", phone: "+48 500 100 200" },
-    submittedAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-  },
-  {
-    _id: "demo-order-2",
-    number: "DEMO/2026/0002",
-    status: "QUOTED",
-    customer: { name: "Bud-Montaż Sp. z o.o.", email: "biuro@budmontaz.pl", phone: "+48 500 300 400" },
-    submittedAt: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    _id: "demo-order-3",
-    number: "DEMO/2026/0001",
-    status: "ACCEPTED",
-    customer: { name: "Anna Nowak", email: "anna@example.pl", phone: "+48 500 555 555" },
-    submittedAt: new Date(Date.now() - 4 * 86400000).toISOString(),
-  },
-];
+import { getDemoOrder, getDemoOrders } from "@/server/demoOrders";
+import { orderTotalGross } from "@/domain/pricing/manualPrice";
 
 export async function assertCompanyDashboardAccess(slug: string) {
   const company = await findCompanyBySlug(slug);
@@ -97,13 +50,18 @@ export async function getDashboardOverview(slug: string) {
   const summary = await getCompanyAdminSummary(slug);
   if (!summary) return null;
   if ((access as any).demo) {
+    const demoOrders = getDemoOrders();
+    const demoQuotedOrders = demoOrders.filter((order) => orderTotalGross(order) != null);
     return {
       ...summary,
       stats: { total: 37, new: 6, accepted: 12, conversion: 32 },
       recentOrders: demoOrders,
       chart: buildMonthlySeries([3, 5, 4, 8, 6, 9, 11, 7, 12, 10, 14, 16]),
       trend: { deltaPercent: 14, label: "vs poprzedni miesiąc" },
-      quotedValue: null,
+      quotedValue: demoQuotedOrders.length ? {
+        totalGross: demoQuotedOrders.reduce((sum, order) => sum + Number(orderTotalGross(order) || 0), 0),
+        orderCount: demoQuotedOrders.length,
+      } : null,
       role: "OWNER",
     };
   }
@@ -133,7 +91,13 @@ export async function getDashboardOverview(slug: string) {
     // Łączna wartość brutto wycenionych zamówień; null gdy żadne nie ma wyceny.
     Order.aggregate([
       { $match: { companyId, "quote.totalGross": { $gt: 0 } } },
-      { $group: { _id: null, sum: { $sum: "$quote.totalGross" }, count: { $sum: 1 } } },
+      {
+        $group: {
+          _id: null,
+          sum: { $sum: { $ifNull: ["$manualPrice.totalGross", "$quote.totalGross"] } },
+          count: { $sum: 1 },
+        },
+      },
     ]),
   ]);
 
@@ -216,6 +180,7 @@ export async function getCompanyOrders(
   const page = query?.all ? 1 : Math.max(query?.page ?? 1, 1);
 
   if ((access as any).demo) {
+    const demoOrders = getDemoOrders();
     return { rows: demoOrders, total: demoOrders.length, page: 1, pageSize, pageCount: 1 };
   }
 
@@ -245,20 +210,11 @@ export async function getCompanyOrders(
 export async function getCompanyOrder(slug: string, orderId: string) {
   const access = await assertCompanyDashboardAccess(slug);
   if ((access as any).demo) {
-    const order = demoOrders.find((item) => item._id === orderId) || demoOrders[0];
+    const result = getDemoOrder(orderId);
+    if (!result) return null;
     return {
-      order: {
-        ...order,
-        notes: "Klient prosi o kontakt po godzinie 16:00.",
-        assignedClerkUserId: "demo-sales",
-        settingsVersion: 2,
-        catalogVersion: 1,
-        configurationSnapshot: demoConfigurationSnapshot(),
-      },
-      events: [
-        { _id: "event-1", type: "ORDER_CREATED", createdAt: order.submittedAt },
-        { _id: "event-2", type: "NOTE_ADDED", note: "Prośba o wycenę transportu.", createdAt: new Date().toISOString() },
-      ],
+      order: result.order,
+      events: result.events,
       readOnly: false,
     };
   }

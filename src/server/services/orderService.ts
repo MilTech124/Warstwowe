@@ -6,6 +6,8 @@ import { getConfiguratorBootstrap } from "@/server/services/companyService";
 import { getPublishedPriceList } from "@/server/services/priceListService";
 import { quoteFromConfiguration } from "@/domain/pricing/quote";
 import type { ConfiguratorBootstrap, OrderCreateInput } from "@/types/saas";
+import { createDemoOrder } from "@/server/demoOrders";
+import { getDemoPublishedPriceList } from "@/server/demoState";
 
 export const orderCreateSchema = z.object({
   customer: z.object({
@@ -16,16 +18,15 @@ export const orderCreateSchema = z.object({
   }),
   notes: z.string().trim().max(2000).optional(),
   consent: z.literal(true).optional(),
-  privacyNoticeAccepted: z.literal(true).optional(),
-  privacyNoticeVersion: z.number().int().positive().optional(),
+  privacyNoticeAccepted: z.literal(true, {
+    error: "Potwierdź zapoznanie się z informacją o przetwarzaniu danych.",
+  }),
+  privacyNoticeVersion: z.number().int().positive(),
   settingsVersion: z.number().int().positive(),
   configuration: z.record(z.string(), z.unknown()).and(
     z.object({ schemaVersion: z.number().int().min(12) }),
   ),
-}).refine(
-  (input) => input.privacyNoticeAccepted === true || input.consent === true,
-  { message: "Potwierdź zapoznanie się z informacją o przetwarzaniu danych." },
-);
+});
 
 export function sanitizeConfiguration(
   input: Record<string, any>,
@@ -190,8 +191,8 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
   if (!privacyProfile) {
     throw new Error("Firma nie opublikowała jeszcze wymaganej informacji o przetwarzaniu danych.");
   }
-  const privacyNoticeVersion = input.privacyNoticeVersion || privacyProfile.noticeVersion;
-  if (input.privacyNoticeAccepted && privacyNoticeVersion !== privacyProfile.noticeVersion) {
+  const privacyNoticeVersion = input.privacyNoticeVersion;
+  if (privacyNoticeVersion !== privacyProfile.noticeVersion) {
     throw new Error("Informacja o przetwarzaniu danych zmieniła się. Odśwież stronę i przeczytaj ją ponownie.");
   }
   if (input.settingsVersion !== bootstrap.settings.version) {
@@ -199,7 +200,27 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
   }
   const configurationSnapshot = sanitizeConfiguration(input.configuration, bootstrap);
 
-  if (bootstrap.company.id === "demo-company" || !(await connectMongo())) {
+  if (bootstrap.company.id === "demo-company") {
+    const priceList = getDemoPublishedPriceList();
+    const quote = bootstrap.capabilities.pricing
+      ? quoteFromConfiguration(configurationSnapshot, priceList.rates, {
+          currency: priceList.currency,
+          priceListVersion: priceList.version,
+        })
+      : null;
+    const order = createDemoOrder({
+      customer: input.customer,
+      notes: input.notes,
+      settingsVersion: input.settingsVersion,
+      catalogVersion: bootstrap.catalog.version,
+      configurationSnapshot,
+      priceListVersion: quote ? priceList.version : null,
+      quote,
+    });
+    return { order: { id: String(order._id), number: order.number, status: order.status } };
+  }
+
+  if (!(await connectMongo())) {
     return {
       order: {
         id: `demo-${Date.now()}`,
@@ -239,7 +260,7 @@ export async function createCompanyOrder(slug: string, rawInput: unknown) {
     status: "NEW",
     customer: input.customer,
     consent: input.consent,
-    privacyNoticeAccepted: Boolean(input.privacyNoticeAccepted || input.consent),
+    privacyNoticeAccepted: true,
     privacyNoticeAcceptedAt: new Date(),
     privacyNoticeVersion,
     notes: input.notes,

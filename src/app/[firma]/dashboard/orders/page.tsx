@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { getCompanyOrders } from "@/server/services/dashboardService";
 import { getConfiguratorBootstrap } from "@/server/services/companyService";
+import { orderTotalGross } from "@/domain/pricing/manualPrice";
 
 export default async function OrdersPage({
   params,
@@ -107,7 +108,7 @@ export default async function OrdersPage({
                     {showPrices && (
                       <TableCell className="text-right tabular-nums whitespace-nowrap">
                         {order.quote ? (
-                          formatPln(order.quote.totalGross)
+                          formatPln(orderTotalGross(order))
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}

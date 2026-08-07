@@ -5,6 +5,12 @@ import { writeAudit } from "@/server/audit";
 import { CatalogManufacturer, CatalogProduct } from "@/server/db/models";
 import { connectMongo } from "@/server/db/connection";
 import { apiError } from "@/server/apiError";
+import { isBlobImageUrl } from "@/lib/blobImage";
+
+const logoUrlSchema = z.string().refine(
+  (value) => value === "" || isBlobImageUrl(value) || z.string().url().safeParse(value).success,
+  "Podaj prawidłowy adres logo.",
+);
 
 const catalogSchema = z.discriminatedUnion("entity", [
   z.object({
@@ -14,7 +20,7 @@ const catalogSchema = z.discriminatedUnion("entity", [
     key: z.string().trim().min(2).max(80).regex(/^[a-z0-9_-]+$/),
     name: z.string().trim().min(2).max(120),
     status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]),
-    logoUrl: z.string().url().or(z.literal("")).optional(),
+    logoUrl: logoUrlSchema.optional(),
     websiteUrl: z.string().url().or(z.literal("")).optional(),
     tagline: z.string().trim().max(120).optional(),
     description: z.string().trim().max(600).optional(),

@@ -87,7 +87,8 @@
   position: fixed;
   z-index: 45;
   bottom: 14px;
-  left: 14px;
+  right: 14px;
+  left: auto;
   display: inline-flex;
   min-height: 38px;
   align-items: center;
@@ -268,10 +269,161 @@ select {
 
 .app-shell {
   display: grid;
+  position: relative;
   grid-template-columns: minmax(380px, 440px) minmax(0, 1fr);
   height: 100svh;
   min-height: 100svh;
   overflow: hidden;
+}
+
+.configurator-access-timer {
+  position: absolute;
+  z-index: 90;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid rgba(18, 110, 99, .2);
+  border-radius: 999px;
+  background: rgba(250, 252, 251, .9);
+  box-shadow: 0 12px 32px rgba(23, 43, 37, .13);
+  color: #284c43;
+  font-size: 11px;
+  font-weight: 750;
+  pointer-events: none;
+  backdrop-filter: blur(14px);
+}
+
+.configurator-access-blocker {
+  position: absolute;
+  z-index: 200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(20, 36, 32, .68);
+  backdrop-filter: blur(12px) saturate(.75);
+}
+
+.configurator-access-card {
+  display: grid;
+  width: min(100%, 480px);
+  gap: 20px;
+  padding: clamp(24px, 4vw, 38px);
+  border: 1px solid rgba(255, 255, 255, .65);
+  border-radius: 24px;
+  background: rgba(252, 253, 252, .97);
+  box-shadow: 0 28px 80px rgba(5, 19, 15, .34);
+  color: #17332c;
+}
+
+.configurator-access-icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--config-primary) 12%, white);
+  color: var(--config-primary);
+}
+
+.configurator-access-kicker {
+  margin: 0 0 7px;
+  color: var(--config-primary);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.configurator-access-card h2 {
+  margin: 0;
+  font-size: clamp(21px, 3vw, 29px);
+  line-height: 1.12;
+}
+
+.configurator-access-card p {
+  margin: 9px 0 0;
+  color: #60736d;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.configurator-access-card label {
+  display: grid;
+  gap: 7px;
+  color: #334e46;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.configurator-access-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 13px;
+  border: 1px solid rgba(92, 116, 108, .3);
+  border-radius: 12px;
+  background: white;
+  color: #6f837d;
+}
+
+.configurator-access-input:focus-within {
+  border-color: var(--config-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--config-primary) 14%, transparent);
+}
+
+.configurator-access-input input {
+  width: 100%;
+  min-width: 0;
+  padding: 13px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #17332c;
+}
+
+.configurator-access-card button {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--config-primary);
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.configurator-access-card button:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+.configurator-access-card .configurator-access-error {
+  margin: -8px 0 0;
+  color: #b42318;
+  font-weight: 700;
+}
+
+.configurator-access-card .configurator-access-contact {
+  margin: -4px 0 0;
+  text-align: center;
+}
+
+.configurator-access-spinner {
+  animation: spin .8s linear infinite;
+}
+
+@media (max-width: 700px) {
+  .configurator-access-timer {
+    right: 10px;
+    bottom: 10px;
+  }
 }
 
 .app-shell.preview-only {
@@ -2006,6 +2158,42 @@ select {
 
 .scene-shell canvas {
   display: block;
+}
+
+.viewer-watermark {
+  position: absolute;
+  z-index: 2;
+  inset: 10% 8%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  justify-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viewer-watermark img {
+  display: block;
+  width: clamp(90px, 13vw, 190px);
+  max-height: clamp(46px, 8vw, 96px);
+  transform: rotate(-18deg);
+  object-fit: contain;
+  opacity: .09;
+  filter: grayscale(1) saturate(.25);
+}
+
+.viewer-watermark.text-fallback span {
+  transform: rotate(-18deg);
+  color: #183d35;
+  font-size: clamp(10px, 1.15vw, 16px);
+  font-weight: 850;
+  letter-spacing: .08em;
+  opacity: .075;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .scene-status {

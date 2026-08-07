@@ -13,6 +13,13 @@ import { writeAudit } from "@/server/audit";
 import { saveDemoState } from "@/server/demoState";
 import { apiError } from "@/server/apiError";
 import { emptyPrivacyProfile, isCompletePrivacyProfile } from "@/config/legal";
+import { isBlobImageUrl } from "@/lib/blobImage";
+import { hashConfiguratorAccessCode } from "@/server/services/configuratorAccessService";
+
+const logoUrlSchema = z.string().refine(
+  (value) => value === "" || isBlobImageUrl(value) || z.string().url().safeParse(value).success,
+  "Podaj prawidłowy adres logo.",
+);
 
 const privacyProfileSchema = z.object({
   controllerName: z.string().trim().max(180),
@@ -26,7 +33,7 @@ const privacyProfileSchema = z.object({
 const settingsSchema = z.object({
   branding: z.object({
     name: z.string().trim().min(2).max(120),
-    logoUrl: z.string().url().or(z.literal("")).nullable().optional(),
+    logoUrl: logoUrlSchema.nullable().optional(),
     primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     supportEmail: z.string().email().or(z.literal("")).nullable().optional(),
@@ -36,6 +43,9 @@ const settingsSchema = z.object({
   settings: z.object({
     version: z.number().int().positive(),
     manuallyEnabled: z.boolean(),
+    publicAccessLimitEnabled: z.boolean(),
+    publicAccessLimitMinutes: z.number().int().min(15).max(240),
+    orderActionLabel: z.enum(["order", "inquiry"]),
     defaultPresetId: z.string().min(1),
     allowedPresetIds: z.array(z.string()).min(1),
     allowedRoofTypeIds: z.array(z.string()).min(1),
@@ -54,6 +64,7 @@ const settingsSchema = z.object({
     orderNotificationEmails: z.array(z.string().email()),
     published: z.boolean().optional(),
   }),
+  accessCode: z.string().trim().min(6).max(64).optional(),
   publish: z.boolean(),
 });
 
@@ -134,7 +145,16 @@ export async function PUT(
     requireCompanyWriteIntent(request, access);
 
     const companyId = (access as any).company._id;
-    const before = await CompanySettings.findOne({ companyId }).lean();
+    const beforeWithSecret: any = await CompanySettings.findOne({ companyId })
+      .select("+publicAccessCodeHash")
+      .lean();
+    const accessCodeConfigured = Boolean(
+      beforeWithSecret?.publicAccessCodeHash || (input.publish && input.accessCode),
+    );
+    if (input.publish && input.settings.publicAccessLimitEnabled && !accessCodeConfigured) {
+      throw new Error("Ustaw kod dostępu przed włączeniem limitu publicznego konfiguratora.");
+    }
+    const { publicAccessCodeHash: _secret, ...before } = beforeWithSecret || {};
     if (input.publish && input.branding) {
       await Company.updateOne(
         { _id: companyId },
@@ -168,6 +188,7 @@ export async function PUT(
     };
     if (input.publish) {
       Object.assign(patch, input.settings);
+      if (input.accessCode) patch.publicAccessCodeHash = hashConfiguratorAccessCode(input.accessCode);
       patch.privacyProfile = versionedPrivacyProfile;
       patch.published = true;
       patch.publishedVersion = nextVersion;
@@ -197,6 +218,7 @@ export async function PUT(
         ...input.settings,
         version: nextVersion,
         published: input.publish || Boolean((updated as any).published),
+        publicAccessCodeConfigured: accessCodeConfigured,
       },
       privacyProfile: draftPrivacyProfile,
     });

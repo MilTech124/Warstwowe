@@ -3,6 +3,7 @@
 import { ControlPanel } from "@/components/ControlPanel";
 import { ConfiguratorProvider } from "@/configurator/ConfiguratorContext";
 import { GarageScene } from "@/scene/GarageScene";
+import { ConfiguratorAccessGate } from "@/components/saas/ConfiguratorAccessGate";
 import {
   ConfiguratorStoreProvider,
   createConfigurationFromSnapshot,
@@ -15,9 +16,16 @@ import {
  *   previewOnly?: boolean,
  *   initialOrder?: Record<string, unknown> | null,
  *   children?: import("react").ReactNode,
+ *   accessControlDisabled?: boolean,
  * }} props
  */
-export default function App({ bootstrap, previewOnly = false, initialOrder = null, children = null }) {
+export default function App({
+  bootstrap,
+  previewOnly = false,
+  initialOrder = null,
+  children = null,
+  accessControlDisabled = false,
+}) {
   const branding = bootstrap?.company?.branding;
   const initialConfig = bootstrap?.initialConfiguration
     ? createConfigurationFromSnapshot(
@@ -49,6 +57,12 @@ export default function App({ bootstrap, previewOnly = false, initialOrder = nul
             "--company-accent": branding?.accentColor || "#f59e0b",
           }}
         >
+          {!previewOnly && (
+            <ConfiguratorAccessGate
+              bootstrap={bootstrap}
+              accessControlDisabled={accessControlDisabled}
+            />
+          )}
           {!previewOnly && <ControlPanel />}
           <GarageScene />
         </main>

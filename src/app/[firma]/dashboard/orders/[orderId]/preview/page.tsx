@@ -8,6 +8,7 @@ import { getConfiguratorBootstrap } from "@/server/services/companyService";
 import { FEATURE_KEYS } from "@/types/saas";
 import { OrderPdfGenerator } from "@/components/dashboard/OrderPdfGenerator";
 import { orderPdfGenerationAvailable } from "@/domain/orderPdf";
+import { quoteWithManualPrice } from "@/domain/pricing/manualPrice";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +30,11 @@ export default async function OrderConfigurationPreviewPage({ params, searchPara
   const snapshot = (data.order as any).configurationSnapshot;
   if (!snapshot) notFound();
   const order = data.order as any;
+  const isDemo = companyBootstrap.company.id === "demo-company";
+  const effectiveQuote = quoteWithManualPrice(order.quote ?? null, order.manualPrice ?? null);
   const canGeneratePdf = orderPdfGenerationAvailable({
     readOnly: data.readOnly,
-    demo: companyBootstrap.company.id === "demo-company",
+    demo: isDemo,
     accessActive: companyBootstrap.accessActive,
     capability: companyBootstrap.capabilities.orderPdf,
   });
@@ -100,10 +103,11 @@ export default async function OrderConfigurationPreviewPage({ params, searchPara
             <OrderPdfGenerator
               slug={firma}
               orderId={orderId}
-              quote={order.quote ?? null}
+              quote={effectiveQuote}
               contractor={contractor}
               hasPdf={Boolean(order.pdfBlobPath)}
               autoStart={query.generatePdf === "1"}
+              demo={isDemo}
             />
           )}
         </App>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, LoaderCircle, MessageSquarePlus, UserRoundCheck } from "lucide-react";
+import { Check, LoaderCircle, MessageSquarePlus, RotateCcw, UserRoundCheck } from "lucide-react";
 import { toast } from "sonner";
 import { ORDER_STATUSES } from "@/types/saas";
 import { orderStatusLabels } from "@/components/dashboard/DashboardBits";
@@ -17,6 +17,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { formatPln } from "@/components/dashboard/QuoteTable";
 
 const UNASSIGNED = "__none__";
 
@@ -26,24 +29,44 @@ export function OrderManager({
   currentStatus,
   currentAssignee,
   team,
+  automaticTotalGross,
+  currentManualPrice,
 }: {
   slug: string;
   orderId: string;
   currentStatus: string;
   currentAssignee?: string | null;
   team: any[];
+  automaticTotalGross?: number | null;
+  currentManualPrice?: { totalGross: number; reason?: string | null } | null;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState(currentStatus);
   const [assignee, setAssignee] = useState(currentAssignee || UNASSIGNED);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [priceGross, setPriceGross] = useState(
+    String(currentManualPrice?.totalGross ?? automaticTotalGross ?? ""),
+  );
+  const [priceReason, setPriceReason] = useState(currentManualPrice?.reason || "");
+  const [priceDirty, setPriceDirty] = useState(false);
 
   const assignableMembers = team.filter(
     (member: any) => member.publicUserData?.userId && member.status === "ACTIVE",
   );
 
   async function save() {
+    const parsedGross = Number(priceGross.replace(",", "."));
+    const restoresAutomaticPrice = automaticTotalGross != null
+      && Math.round(parsedGross * 100) === Math.round(automaticTotalGross * 100);
+    if (priceDirty && (!Number.isFinite(parsedGross) || parsedGross < 0)) {
+      toast.error("Podaj prawidłową cenę brutto.");
+      return;
+    }
+    if (priceDirty && !restoresAutomaticPrice && priceReason.trim().length < 2) {
+      toast.error("Podaj powód ręcznej korekty ceny.");
+      return;
+    }
     setBusy(true);
     try {
       const response = await fetch(`/api/companies/${slug}/orders/${orderId}`, {
@@ -53,6 +76,11 @@ export function OrderManager({
           status,
           assignedClerkUserId: assignee === UNASSIGNED ? null : assignee,
           note: note || undefined,
+          ...(priceDirty ? {
+            manualPrice: restoresAutomaticPrice
+              ? null
+              : { totalGross: parsedGross, reason: priceReason.trim() },
+          } : {}),
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -62,6 +90,7 @@ export function OrderManager({
         return;
       }
       setNote("");
+      setPriceDirty(false);
       toast.success("Zmiany zapisane.");
       router.refresh();
     } catch {
@@ -96,6 +125,60 @@ export function OrderManager({
             </SelectContent>
           </Select>
         </div>
+
+        {automaticTotalGross != null && (
+          <div className="grid gap-3 rounded-xl border border-border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label htmlFor="order-price-gross">Cena końcowa brutto</Label>
+              <Badge variant={currentManualPrice ? "default" : "secondary"}>
+                {currentManualPrice ? "Korekta ręczna" : "Cena z cennika"}
+              </Badge>
+            </div>
+            <Input
+              id="order-price-gross"
+              type="number"
+              min={0}
+              step="0.01"
+              inputMode="decimal"
+              value={priceGross}
+              onChange={(event) => {
+                setPriceGross(event.target.value);
+                setPriceDirty(true);
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              Automatyczna wycena z cennika: {formatPln(automaticTotalGross)}
+            </p>
+            <div className="grid gap-2">
+              <Label htmlFor="order-price-reason">Powód korekty</Label>
+              <Textarea
+                id="order-price-reason"
+                value={priceReason}
+                onChange={(event) => {
+                  setPriceReason(event.target.value);
+                  setPriceDirty(true);
+                }}
+                rows={2}
+                maxLength={500}
+                placeholder="Np. rabat uzgodniony z klientem"
+              />
+            </div>
+            {currentManualPrice && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPriceGross(String(automaticTotalGross));
+                  setPriceReason("");
+                  setPriceDirty(true);
+                }}
+              >
+                <RotateCcw size={14} /> Przywróć cenę z cennika
+              </Button>
+            )}
+          </div>
+        )}
 
         <div className="grid gap-2">
           <Label htmlFor="order-assignee" className="gap-1.5">

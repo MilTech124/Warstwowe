@@ -2,6 +2,7 @@ import { put } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperadmin } from "@/server/auth";
 import { apiError } from "@/server/apiError";
+import { blobImageUrl } from "@/lib/blobImage";
 
 export const runtime = "nodejs";
 
@@ -29,11 +30,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Podaj klucz producenta." }, { status: 400 });
     }
     const blob = await put(`catalog/manufacturers/${manufacturerKey}/${file.name}`, file, {
-      access: "public",
+      access: "private",
       addRandomSuffix: true,
       contentType: file.type,
     });
-    return NextResponse.json({ url: blob.url });
+    return NextResponse.json({ url: blobImageUrl(blob.pathname) });
   } catch (error) {
     return apiError(error, "Nie udało się przesłać pliku.");
   }
