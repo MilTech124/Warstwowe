@@ -1,14 +1,14 @@
 import { redirect } from "next/navigation";
 import { getRequestIdentity } from "@/server/auth";
-import { findRegistrationForUser } from "@/server/services/companyService";
+import { demoModeEnabled, findRegistrationForUser } from "@/server/services/companyService";
 
 export const dynamic = "force-dynamic";
 
 export default async function PanelEntryPage() {
-  const localDemoEnabled = process.env.NODE_ENV !== "production" && process.env.DEMO_MODE === "true";
+  const demoEnabled = demoModeEnabled();
   const identity = await getRequestIdentity();
   if (!identity.userId) {
-    if (localDemoEnabled) redirect("/demo/dashboard");
+    if (demoEnabled) redirect("/demo/dashboard");
     redirect("/logowanie?redirect_url=/panel");
   }
 
@@ -19,7 +19,7 @@ export default async function PanelEntryPage() {
     redirect(`/${registration.company.slug}/dashboard`);
   }
   if (registration?.isOwner) redirect("/onboarding");
-  if (localDemoEnabled) redirect("/demo/dashboard");
+  if (demoEnabled) redirect("/demo/dashboard");
   if (identity.isSuperadmin) redirect("/superadmin");
   redirect("/onboarding");
 }

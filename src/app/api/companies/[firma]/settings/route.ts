@@ -123,7 +123,7 @@ export async function PUT(
 
     // The demo tenant has no membership records, so it cannot go through
     // requireCompanyMember — but it must still not accept anonymous writes.
-    // `demoModeEnabled()` already rules production out.
+    // `demoModeEnabled()` requires an explicit opt-in in production.
     if (bootstrap.company.id === "demo-company" && demoModeEnabled()) {
       const identity = await getRequestIdentity();
       if (!identity.userId) {

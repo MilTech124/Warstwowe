@@ -369,14 +369,13 @@ async function dynamicCatalog(): Promise<PublicCatalog> {
 }
 
 /**
- * The synthetic `/demo` tenant bypasses authentication entirely and serves a
- * full DIAMOND dashboard, so it must never be reachable in production. Opt-in
- * only, and never when NODE_ENV is production — previously this was
- * `DEMO_MODE !== "false"`, which left it on by default everywhere.
+ * The synthetic `/demo` tenant is available in production only after an
+ * explicit opt-in. Development without MongoDB keeps the convenient fallback,
+ * but a production deployment never enables demo implicitly.
  */
 export function demoModeEnabled() {
-  if (process.env.NODE_ENV === "production") return false;
-  return process.env.DEMO_MODE === "true" || !process.env.MONGODB_URI;
+  return process.env.DEMO_MODE === "true"
+    || (process.env.NODE_ENV !== "production" && !process.env.MONGODB_URI);
 }
 
 export async function findCompanyBySlug(slug: string) {

@@ -2163,10 +2163,10 @@ select {
 .viewer-watermark {
   position: absolute;
   z-index: 2;
-  inset: 10% 8%;
+  inset: 8% 6%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
   align-items: center;
   justify-items: center;
   overflow: hidden;
@@ -2176,24 +2176,52 @@ select {
 
 .viewer-watermark img {
   display: block;
-  width: clamp(90px, 13vw, 190px);
-  max-height: clamp(46px, 8vw, 96px);
+  width: clamp(140px, 19vw, 280px);
+  max-height: clamp(70px, 11vw, 140px);
   transform: rotate(-18deg);
   object-fit: contain;
-  opacity: .09;
-  filter: grayscale(1) saturate(.25);
+  opacity: .17;
+  filter: grayscale(.75) saturate(.55) contrast(1.12);
+}
+
+.viewer-watermark.emphasized img {
+  width: clamp(180px, 24vw, 360px);
+  max-height: clamp(90px, 14vw, 180px);
+  opacity: .26;
+  filter: grayscale(.45) saturate(.8) contrast(1.2);
 }
 
 .viewer-watermark.text-fallback span {
   transform: rotate(-18deg);
   color: #183d35;
-  font-size: clamp(10px, 1.15vw, 16px);
+  font-size: clamp(13px, 1.55vw, 22px);
   font-weight: 850;
   letter-spacing: .08em;
-  opacity: .075;
+  opacity: .14;
   text-align: center;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.viewer-watermark.text-fallback.emphasized span {
+  font-size: clamp(17px, 2vw, 28px);
+  opacity: .22;
+}
+
+@media (max-width: 700px) {
+  .viewer-watermark {
+    inset: 10% 3%;
+  }
+
+  .viewer-watermark img {
+    width: clamp(110px, 34vw, 180px);
+    max-height: 90px;
+  }
+
+  .viewer-watermark.emphasized img {
+    width: clamp(140px, 42vw, 220px);
+    max-height: 112px;
+  }
 }
 
 .scene-status {

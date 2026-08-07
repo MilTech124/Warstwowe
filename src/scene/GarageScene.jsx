@@ -301,14 +301,17 @@ function ViewerPresetOverlay() {
   );
 }
 
-const VIEWER_WATERMARK_MARKS = 6;
+const VIEWER_WATERMARK_MARKS = 4;
 
-function ViewerWatermark({ branding }) {
+function ViewerWatermark({ branding, emphasized = false }) {
   const logoUrl = branding?.logoUrl;
   const label = branding?.name || "Konfigurator";
 
   return (
-    <div className={`viewer-watermark ${logoUrl ? "has-logo" : "text-fallback"}`} aria-hidden="true">
+    <div
+      className={`viewer-watermark ${logoUrl ? "has-logo" : "text-fallback"} ${emphasized ? "emphasized" : ""}`}
+      aria-hidden="true"
+    >
       {Array.from({ length: VIEWER_WATERMARK_MARKS }, (_, index) => (
         logoUrl
           ? <img key={index} src={logoUrl} alt="" draggable="false" />
@@ -354,6 +357,8 @@ export function GarageScene() {
   const setAutoQuality = useConfiguratorStore((state) => state.setAutoQuality);
   const [glState, setGlState] = useState("ok");
   const [canvasKey, setCanvasKey] = useState(0);
+  const emphasizedWatermark =
+    access.company.slug === "demo" || access.settings.publicAccessLimitEnabled;
 
   // Detekcja i odczyt zapisanego wyboru dopiero po montażu - store powstaje też
   // w SSR, a localStorage/navigator w initializerze dałyby hydration mismatch.
@@ -383,7 +388,7 @@ export function GarageScene() {
   if (glState !== "ok") {
     return (
       <div className="scene-shell">
-        <ViewerWatermark branding={access.company.branding} />
+        <ViewerWatermark branding={access.company.branding} emphasized={emphasizedWatermark} />
         <SceneUnavailable
           reason={glState}
           onRetry={() => {
@@ -397,7 +402,7 @@ export function GarageScene() {
 
   return (
     <div className="scene-shell">
-      <ViewerWatermark branding={access.company.branding} />
+      <ViewerWatermark branding={access.company.branding} emphasized={emphasizedWatermark} />
       <Canvas
         key={canvasKey}
         shadows={qualityProfile.softShadows ? "soft" : "percentage"}

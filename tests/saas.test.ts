@@ -14,12 +14,42 @@ import {
   verifyConfiguratorAccessCode,
 } from "../src/server/services/configuratorAccessService";
 import { getDemoOrder, updateDemoOrder } from "../src/server/demoOrders";
+import { demoModeEnabled } from "../src/server/services/companyService";
 
 const activeInput = {
   subscriptionStatus: "ACTIVE" as const,
   periodEnd: "2030-01-01T00:00:00.000Z",
   now: new Date("2026-07-28T00:00:00.000Z"),
 };
+
+test("DEMO_MODE jawnie włącza demo również na produkcji", () => {
+  const previous = {
+    nodeEnv: process.env.NODE_ENV,
+    demoMode: process.env.DEMO_MODE,
+    mongoUri: process.env.MONGODB_URI,
+  };
+
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.MONGODB_URI = "mongodb://example.invalid/app";
+    process.env.DEMO_MODE = "true";
+    assert.equal(demoModeEnabled(), true);
+
+    process.env.DEMO_MODE = "false";
+    assert.equal(demoModeEnabled(), false);
+
+    process.env.NODE_ENV = "development";
+    delete process.env.MONGODB_URI;
+    assert.equal(demoModeEnabled(), true);
+  } finally {
+    if (previous.nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previous.nodeEnv;
+    if (previous.demoMode === undefined) delete process.env.DEMO_MODE;
+    else process.env.DEMO_MODE = previous.demoMode;
+    if (previous.mongoUri === undefined) delete process.env.MONGODB_URI;
+    else process.env.MONGODB_URI = previous.mongoUri;
+  }
+});
 
 test("kod publicznego konfiguratora jest haszowany i weryfikowany bez zapisu jawnej wartości", () => {
   const encoded = hashConfiguratorAccessCode("FIRMA-2026");
